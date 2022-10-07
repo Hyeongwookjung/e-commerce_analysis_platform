@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>524</width>
-    <height>194</height>
+    <height>220</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -19,13 +19,13 @@
   <property name="minimumSize">
    <size>
     <width>524</width>
-    <height>194</height>
+    <height>220</height>
    </size>
   </property>
   <property name="maximumSize">
    <size>
     <width>524</width>
-    <height>194</height>
+    <height>220</height>
    </size>
   </property>
   <property name="font">
@@ -57,6 +57,12 @@
      </item>
      <item>
       <widget class="QLabel" name="label_2">
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>20</height>
+        </size>
+       </property>
        <property name="font">
         <font>
          <family>KoPubWorld돋움체 Light</family>
@@ -64,7 +70,26 @@
         </font>
        </property>
        <property name="text">
-        <string>아래 안내에 따라 후기 작성 후 링크를 공유해주시면 7일이 추가됩니다. </string>
+        <string>작성방법에 따라 후기 작성 후 링크를 입력해주시면 프리미엄 3일이 부여됩니다. </string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_4">
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>20</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <family>KoPubWorld돋움체 Light</family>
+         <pointsize>9</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>(소중한 후기 검토 후 반영되기까지는 약 1~2일 소요됩니다.)</string>
        </property>
       </widget>
      </item>
@@ -97,14 +122,20 @@
        </item>
        <item>
         <widget class="QLabel" name="label_3">
+         <property name="minimumSize">
+          <size>
+           <width>70</width>
+           <height>0</height>
+          </size>
+         </property>
          <property name="text">
-          <string>&lt;a href=&quot;https://youngmusk.imweb.me/TRAFFIC&quot;&gt;&lt;span style=&quot; color:#000000;&quot; style=&quot;text-decoration:none&quot;&gt;확인하기&lt;/a&gt;</string>
+          <string>&lt;a href=&quot;1&quot;&gt;&lt;span style=&quot; color:#000000;&quot; style=&quot;text-decoration:none&quot;&gt;작성방법&lt;/a&gt;</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
          </property>
          <property name="openExternalLinks">
-          <bool>true</bool>
+          <bool>false</bool>
          </property>
          <property name="textInteractionFlags">
           <set>Qt::LinksAccessibleByMouse</set>
@@ -149,13 +180,30 @@
      <y>181</y>
     </hint>
     <hint type="destinationlabel">
-     <x>901</x>
-     <y>326</y>
+     <x>523</x>
+     <y>219</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>label_3</sender>
+   <signal>linkActivated(QString)</signal>
+   <receiver>Dialog</receiver>
+   <slot>check_free()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>480</x>
+     <y>127</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>523</x>
+     <y>121</y>
     </hint>
    </hints>
   </connection>
  </connections>
  <slots>
   <slot>complete_interface()</slot>
+  <slot>check_free()</slot>
  </slots>
 </ui>

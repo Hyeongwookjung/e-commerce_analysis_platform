@@ -57,7 +57,7 @@ class Thread1(QThread):
         global stop_bool
         stop_bool = True
         super().__init__(parent)
-        self.parent = parent #self.parent를 사용하여 WindowClass 위젯을 제어할 수 있다.
+        self.parent = parent
 ####################################test 필요#####################################
     #검색 로직
     def run(self):
@@ -388,6 +388,26 @@ class Window_Login(QDialog, UI_Login):
                 self.tableWidget_news.setItem(i,j,QTableWidgetItem(news_list[i][j+1]))
         self.tableWidget_news.repaint()
 
+    def get_version(self):
+        msg = QMessageBox() #메시지 알림 박스
+
+        global check_run
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            #프로그램 버젼 확인
+            sql = "SELECT * FROM version WHERE name=%s;"
+            cur_user.execute(sql, 'V1')
+            check_version = cur_user.fetchall()
+            check_run = check_version[0][2]
+            print(check_run)
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('우측 공지사항을 통해 최신 버젼을 다운로드해주세요.')
+            msg.exec_()
+        finally:
+            con_user.commit()
+            con_user.close()
 
     #분석 화면 이동
     def login_lnterface(self):
@@ -401,6 +421,8 @@ class Window_Login(QDialog, UI_Login):
         login_id = self.lineEdit_id.text()
         login_password = self.lineEdit_password.text()
         login_save_check = self.checkBox_login.isChecked()
+        # if check_run
+        #버젼체크하기 그리고 if문으로 만들기
 #######################배포 전 변경(우측 공지사항에서 신규 버젼 다운 요청)#############################
 
         #아이디와 비밀번호 입력 여부 확인
@@ -1775,7 +1797,6 @@ class Window_Keyword(QDialog, UI_Keyword):
                     msg.exec_()
 
 class Window_Free(QDialog, UI_Free):
-    
     #기본 설정
     def __init__(self):
         super().__init__()
@@ -1790,7 +1811,62 @@ class Window_Free(QDialog, UI_Free):
         self.setStyleSheet(qdarktheme.load_stylesheet("light"))
 
     def complete_interface(self):
+        #이벤트 진행여부##################################################################
+        
+
+
+
+        #3일 후에 다시 시도해주세요###########날짜 빼기####################################
         msg = QMessageBox()
+        review_link = self.lineEdit.text()
+        review_date = dt_now.date()
+        if review_link == '':
+            msg.setWindowTitle('알림')
+            msg.setText('작성하신 블로그 본문 링크를 입력해주세요.')
+            msg.exec_()
+            return
+        
+        if review_link in 'http':
+            reply = QMessageBox.question(self, '확인', '블로그 후기 입력을 진행하시겠습니까?\n임의의 링크를 입력할 시 프로그램 권한이 삭제됩니다.',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if reply == QMessageBox.Yes:
+                #블로그 후기 작성 DB에 링크 저장
+                try:
+                    con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                    cur_user = con_user.cursor()
+                    sql = f"INSERT INTO review_list (id, link, give, date) VALUES ('{db_id}','{review_link}','1','{review_date}');"
+                    cur_user.execute(sql)
+                except:
+                    msg.setWindowTitle('알림')
+                    msg.setText('링크 입력에 실패하였습니다.\n관리자에게 문의하세요.')
+                    msg.exec_()
+                    return
+                finally:
+                    con_user.commit()
+                    con_user.close()
+                    msg.setWindowTitle('알림')
+                    msg.setText('후기 링크 입력이 성공적으로 처리되었습니다.')
+                    msg.exec_()
+        else:
+            msg.setWindowTitle('알림')
+            msg.setText('전체 주소를 입력해주세요. ex) http:...')
+            msg.exec_()           
+
+    #7일 무료체험 공지글 확인하기
+    def check_free(self):
+        msg = QMessageBox()
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM web_link WHERE button=%s;"
+            cur_user.execute(sql, '7일 무료체험')
+            free_seven = cur_user.fetchall()
+            webbrowser.open(free_seven[0][2])
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('홈페이지 접속에 실패하였습니다.\n관리자에게 문의하세요.')
+            msg.exec_()
+            return
 
 class Window_Recommend(QDialog, UI_Recommend):
     
