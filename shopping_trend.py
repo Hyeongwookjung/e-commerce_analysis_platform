@@ -6,6 +6,7 @@ from glob import glob
 #DB모듈
 from sqlite3 import connect
 from tkinter.ttk import Progressbar
+from django import get_version
 import pymysql
 import sqlite3
 # from test import fetcher
@@ -390,7 +391,6 @@ class Window_Login(QDialog, UI_Login):
 
     def get_version(self):
         msg = QMessageBox() #메시지 알림 박스
-
         global check_run
         try:
             con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
@@ -403,7 +403,7 @@ class Window_Login(QDialog, UI_Login):
             print(check_run)
         except:
             msg.setWindowTitle('알림')
-            msg.setText('우측 공지사항을 통해 최신 버젼을 다운로드해주세요.')
+            msg.setText('버젼 확인이 실패하였습니다.\n관리자에게 문의하세요.')
             msg.exec_()
         finally:
             con_user.commit()
@@ -421,9 +421,13 @@ class Window_Login(QDialog, UI_Login):
         login_id = self.lineEdit_id.text()
         login_password = self.lineEdit_password.text()
         login_save_check = self.checkBox_login.isChecked()
-        # if check_run
-        #버젼체크하기 그리고 if문으로 만들기
-#######################배포 전 변경(우측 공지사항에서 신규 버젼 다운 요청)#############################
+
+        self.get_version()
+        if check_run != 1:
+            msg.setWindowTitle('알림')
+            msg.setText('우측 공지사항을 통해 최신 버젼을 다운로드해주세요.')
+            msg.exec_()
+            return
 
         #아이디와 비밀번호 입력 여부 확인
         if login_id == '':
@@ -459,12 +463,12 @@ class Window_Login(QDialog, UI_Login):
 
         if login_id != db_id:
             msg.setWindowTitle('알림')
-            msg.setText('아이디가 일치하지 않습니다.')
+            msg.setText('아이디가 일치하지 않습니다.\n아래의 계정찾기를 통해 ID를 확인해주세요.')
             msg.exec_()
             return
         elif login_password != db_password:
             msg.setWindowTitle('알림')
-            msg.setText('비밀번호가 일치하지 않습니다.')
+            msg.setText('비밀번호가 일치하지 않습니다.\n우측 공지사항을 확인하여 비밀번호를 찾아주세요.')
             msg.exec_()
             return
         else:
@@ -498,10 +502,23 @@ class Window_Login(QDialog, UI_Login):
         
     #회원가입 화면 이동
     def register_lnterface(self):
-        self.main = Window_Register()
-        # self.main.exec()
-
-        #여기 mac 등록 여부 확인#################################################################
+        msg = QMessageBox() #메시지 알림 박스
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM check_login WHERE mac=%s;"
+            cur_user.execute(sql, mac_address)
+            check_id = cur_user.fetchall()
+            check_cnt = check_id[0]
+        except:
+            self.main = Window_Register()
+        try:
+            if check_cnt != '':
+                msg.setWindowTitle('알림')
+                msg.setText('이미 해당 PC에서 가입을 진행하였습니다.\n아래의 계정찾기를 통해 ID를 확인해주세요.')
+                msg.exec_()
+        except:
+            return
 
     #MAC주소
     def get_mac(self):
@@ -511,9 +528,12 @@ class Window_Login(QDialog, UI_Login):
     #오늘날짜
     def get_date(self):
         global register_date
+        global premium_date
         global dt_now
         dt_now = datetime.datetime.now()
         register_date = dt_now.date()
+        dt_pre = dt_now + datetime.timedelta(days=3)
+        premium_date = dt_pre.date()
 
     #Worker
     def get_worker(self):
@@ -729,7 +749,7 @@ class Window_Register(QDialog, UI_Register):
                 try:
                     con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
                     cur_user = con_user.cursor()
-                    sql = f"INSERT INTO youngmusk_login (id, password, mac, premium, name, phone, email, register) VALUES ('{register_id}','{register_pass2}','{mac_address}','{register_date}','{register_name}','{register_phone}','{register_email}','{register_date}');"
+                    sql = f"INSERT INTO youngmusk_login (id, password, mac, premium, name, phone, email, register) VALUES ('{register_id}','{register_pass2}','{mac_address}','{premium_date}','{register_name}','{register_phone}','{register_email}','{register_date}');"
                     cur_user.execute(sql)
                 except:
                     msg.setWindowTitle('알림')
@@ -744,7 +764,7 @@ class Window_Register(QDialog, UI_Register):
                 try:
                     con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
                     cur_user = con_user.cursor()
-                    sql = f"INSERT INTO check_login (id, password, mac, premium) VALUES ('{register_id}','{register_pass2}','{mac_address}','{register_date}');"
+                    sql = f"INSERT INTO check_login (id, password, mac, premium, review, recommend) VALUES ('{register_id}','{register_pass2}','{mac_address}','{premium_date}',0,0);"
                     cur_user.execute(sql)
                 except:
                     msg.setWindowTitle('알림')
@@ -1502,6 +1522,31 @@ class Window_Analysis(QMainWindow, UI_Analysis):
                 self.comboBox_level_4.addItem(level_4_elm)
 
     def free_interface(self):
+        msg = QMessageBox() #메시지 알림 박스
+
+        #이벤트 진행여부
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            #프로그램 버젼 확인
+            sql = "SELECT * FROM version WHERE name=%s;"
+            cur_user.execute(sql, 'V1')
+            check_version = cur_user.fetchall()
+            check_review = check_version[0][4]
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('버젼 확인이 실패하였습니다.\n관리자에게 문의하세요.')
+            msg.exec_()
+        finally:
+            con_user.commit()
+            con_user.close()
+
+        if check_review != '1':
+            msg.setWindowTitle('알림')
+            msg.setText('리뷰 이벤트가 종료되었습니다.\n다시 진행할 경우 공지사항에 업데이트됩니다.')
+            msg.exec_()
+            return
+
         self.main = Window_Free()
 
     def recommend_interface(self):
@@ -1525,10 +1570,32 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             pass
     
     def premium_link(self):
-        webbrowser.open(url='https://youngmusk.imweb.me/TRAFFIC')
+        msg = QMessageBox()
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM web_link WHERE button=%s;"
+            cur_user.execute(sql, '멤버쉽 결제')
+            free_seven = cur_user.fetchall()
+            webbrowser.open(free_seven[0][2])
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('홈페이지 접속에 실패하였습니다.\n관리자에게 문의하세요.')
+            return
 
     def contact_link(self):
-        webbrowser.open(url='https://youngmusk.imweb.me/CONTACT')
+        msg = QMessageBox()
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM web_link WHERE button=%s;"
+            cur_user.execute(sql, '문의하기')
+            free_seven = cur_user.fetchall()
+            webbrowser.open(free_seven[0][2])
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('홈페이지 접속에 실패하였습니다.\n관리자에게 문의하세요.')
+            return
         
     #프로그램 종료
     def closeEvent(self, event):
@@ -1674,7 +1741,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
                 con_user.commit()
                 con_user.close()
 #######################배포 전 변경(1을 0으로 그리고 사이트 주소 전체 확인)#############################
-            # if premium_days == 0:
+            # if premium_days < 1:
             if premium_days == 1:
                 msg.setWindowTitle('알림')
                 msg.setText('\n계속 진행하시려면 프리미엄 구독을 진행해주세요.')
@@ -1684,14 +1751,11 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             else:
                 #시작 시간
                 start_time = time.time()
-
-
                 self.textEdit_box.append("검색이 시작되었습니다.")
 
                 #멀티쓰레드 가동
                 thread = Thread1(self)
                 thread.start()
-
 
     #리스트 박스 검색중
     def listbox_searching(self):
@@ -1716,7 +1780,19 @@ class Window_Analysis(QMainWindow, UI_Analysis):
 
     #구독하기
     def youtube(self):
-        webbrowser.open(url='https://www.youtube.com/channel/UCztpn5WVFDj_8c4vFcD2NoA')
+        msg = QMessageBox()
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM web_link WHERE button=%s;"
+            cur_user.execute(sql, '구독하기')
+            free_seven = cur_user.fetchall()
+            webbrowser.open(free_seven[0][2])
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('홈페이지 접속에 실패하였습니다.\n관리자에게 문의하세요.')
+            msg.exec_()
+            return
 
     #엑셀 다운로드
     def excel_download(self):
@@ -1766,9 +1842,10 @@ class Window_Keyword(QDialog, UI_Keyword):
 
     def complete_interface(self):
         msg = QMessageBox()
-
         #리스트 박스 내용
         keyword_content = self.textEdit_keyword.toPlainText()
+        dt_now = datetime.datetime.now()
+        keyword_date = dt_now.date()
 
         #DB에 금지어 등록
         reply = QMessageBox.question(self, '확인', '금지어 등록 제안을 진행하시겠습니까?',
@@ -1782,7 +1859,7 @@ class Window_Keyword(QDialog, UI_Keyword):
                 try:
                     con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
                     cur_user = con_user.cursor()
-                    sql = f"INSERT INTO keyword_list (id, keyword) VALUES ('{db_id}','{keyword_content}');"
+                    sql = f"INSERT INTO keyword_list (id, keyword, date) VALUES ('{db_id}','{keyword_content}','{keyword_date}');"
                     cur_user.execute(sql)
                 except:
                     msg.setWindowTitle('알림')
@@ -1811,14 +1888,29 @@ class Window_Free(QDialog, UI_Free):
         self.setStyleSheet(qdarktheme.load_stylesheet("light"))
 
     def complete_interface(self):
-        #이벤트 진행여부##################################################################
-        
-
-
-
-        #3일 후에 다시 시도해주세요###########날짜 빼기####################################
         msg = QMessageBox()
+        review_cnt = 0
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM check_login WHERE id=%s;"
+            cur_user.execute(sql, db_id)
+            review_sen = cur_user.fetchall()
+            review_cnt = review_sen[0][5]
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('버젼 확인에 실패하였습니다.\n관리자에게 문의하세요.')
+            msg.exec_()
+            return
+
+        if review_cnt > 10:
+            msg.setWindowTitle('알림')
+            msg.setText('10회 이상 프리미엄 체험권을 받으셨기에 이용이 불가합니다.')
+            msg.exec_()
+            return
+
         review_link = self.lineEdit.text()
+        dt_now = datetime.datetime.now()
         review_date = dt_now.date()
         if review_link == '':
             msg.setWindowTitle('알림')
@@ -1847,6 +1939,17 @@ class Window_Free(QDialog, UI_Free):
                     msg.setWindowTitle('알림')
                     msg.setText('후기 링크 입력이 성공적으로 처리되었습니다.')
                     msg.exec_()
+                try:
+                    con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                    cur_user = con_user.cursor()
+                    #프로그램 버젼 확인
+                    sql = "UPDATE check_login SET review=review+1 WHERE id=%s;"
+                    cur_user.execute(sql, db_id)
+                except:
+                    return
+                finally:
+                    con_user.commit()
+                    con_user.close()
         else:
             msg.setWindowTitle('알림')
             msg.setText('전체 주소를 입력해주세요. ex) http:...')
