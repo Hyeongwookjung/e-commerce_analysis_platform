@@ -1,5 +1,6 @@
 #알수없음
 from ast import keyword
+# from asyncio import FastChildWatcher
 from atexit import register
 from glob import glob
 
@@ -38,10 +39,22 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import concurrent.futures
 import re, uuid #MAC
-import pandas as pd
 import pickle
 import csv
 import gc
+import random
+
+#데이터분석
+import pandas as pd
+import numpy as np
+import warnings
+warnings.filterwarnings(action='ignore')
+from xgboost import XGBRegressor
+from sklearn.model_selection import train_test_split, GridSearchCV, KFold, cross_val_score
+
+#Misc
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import scale, MinMaxScaler
 
 #UI파일 연결
 UI_Login = uic.loadUiType("Login.ui")[0]
@@ -55,30 +68,150 @@ UI_Free = uic.loadUiType("Free.ui")[0]
 #쓰레드
 class Thread1(QThread):
     def __init__(self, parent):
-        global stop_bool
-        stop_bool = True
         super().__init__(parent)
         self.parent = parent
-####################################test 필요#####################################
     #검색 로직
     def run(self):
         global start_time
         global time_bool
         global worker_cnt_f
         global item_list
-        
+        global item_result
+        global df
         time_bool = True
-        # with ThreadPoolExecutor(max_workers=1) as executor:
+
         with ThreadPoolExecutor(max_workers=worker_cnt_f) as executor:
             thread_list = []
             for keyword in keyword_list:
                 thread_list.append(executor.submit(self.searching, keyword))
             for execution in concurrent.futures.as_completed(thread_list):
                 execution.result()
-        time_bool = False   
-        item_result = pd.DataFrame.from_dict(item_list)
-        item_result_view = item_result.drop([0], axis = 0)
-        
+        #데이터프레임 순위 정렬 및 결측치 제거
+        df = pd.DataFrame.from_dict(data=item_list)
+        df.columns = ['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','URL']
+        df = df.drop([0], axis = 0)
+        df = df.loc[df.순위 != '없음']
+        df = df.astype({'No':'int'})
+        df = df.astype({'순위':'int'})
+        df.sort_values(by=["No","순위"], ascending=[True,True], inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        df.loc[df['찜'] == 'None', '찜'] = 0
+        df.loc[df['평점'] == 'None', '평점'] = 0
+        df = df.astype({'판매유형':'str'})
+        df = df.astype({'상품가격':'int'})
+        df = df.astype({'등록일자':'int'})
+        df = df.astype({'구매_3일':'int'})
+        df = df.astype({'구매':'int'})
+        df = df.astype({'리뷰':'int'})
+        df = df.astype({'찜':'int'})
+        df = df.astype({'문의':'int'})
+        df = df.astype({'카테고리':'int'})
+        df = df.astype({'상품명_L':'int'})
+        df = df.astype({'옵션_L':'int'})
+        #국가/등급/판매유형 변경
+        df.loc[df['제조국가'].str.contains('중국|china|CHINA|CN'),'제조국가']='중국'
+        df.loc[df['제조국가'].str.contains('미국|멕시코|캐나다|CANADA'),'제조국가']='미국'
+        df.loc[df['제조국가'].str.contains('일본|JAPAN|japan'),'제조국가']='일본'
+        df.loc[df['제조국가'].str.contains('태국|대만|뉴질랜드'),'제조국가']='기타'
+        df.loc[df['제조국가'].str.contains('폴란드|프랑스|유럽|EU|영국|스페인|이탈리아|네덜란드|노르웨이|덴마크|독일}그리스|러시아|스위스'),'제조국가']='유럽'
+        df.loc[df['제조국가'].str.contains('국산|국내산|대한민국'),'제조국가']='국내'
+        df.loc[~df['제조국가'].str.contains('중국|미국|일본|유럽|국내'),'제조국가']='기타'
+        df.loc[df['등급'].str.contains('M44001'),'등급']='플래티넘'
+        df.loc[df['등급'].str.contains('M44002'),'등급']='프리미엄'
+        df.loc[df['등급'].str.contains('M44003'),'등급']='빅파워'
+        df.loc[df['등급'].str.contains('M44004'),'등급']='파워'
+        df.loc[df['등급'].str.contains('M44005'),'등급']='새싹'
+        df.loc[df['등급'].str.contains('M44006'),'등급']='씨앗'
+        df.loc[df['판매유형'].str.contains('0'),'판매유형']='국내'
+        df.loc[df['판매유형'].str.contains('1'),'판매유형']='해외'
+
+        item_result = df
+        #제조국가
+        if set_start['전체국가'] == True:
+            df = df.loc[df.제조국가 != '']
+        else:
+            if set_start['국내'] == False:
+                df = df.loc[df.제조국가 != '국내']
+            if set_start['중국'] == False:
+                df = df.loc[df.제조국가 != '중국']
+            if set_start['미국'] == False:
+                df = df.loc[df.제조국가 != '미국']
+            if set_start['일본'] == False:
+                df = df.loc[df.제조국가 != '일본']
+            if set_start['유럽'] == False:
+                df = df.loc[df.제조국가 != '유럽']
+            if set_start['기타'] == False:
+                df = df.loc[df.제조국가 != '기타']
+        #상품가격
+        if set_start['전체가격'] == True:
+            df = df.loc[df.상품가격 != '']
+        else:
+            df = df.loc[df.상품가격 >= int(set_start['최저가격'])]
+            df = df.loc[df.상품가격 <= int(set_start['최고가격'])]
+        #등록일자
+        if set_start['전체기간'] == True:
+            df = df.loc[df.등록일자 != '']
+        else:
+            date_min = [str(set_start['시작일자'][0]),str('%02d' % set_start['시작일자'][1]),str('%02d' % set_start['시작일자'][2])]
+            date_min = ''.join(date_min)
+            date_max = [str(set_start['종료일자'][0]),str('%02d' % set_start['종료일자'][1]),str('%02d' % set_start['종료일자'][2])]
+            date_max = ''.join(date_max)
+            df = df.loc[df.등록일자 >= int(date_min)]
+            df = df.loc[df.등록일자 <= int(date_max)]
+        #구매3일
+        if set_start['구매3일'] == True:
+            df = df.loc[df.구매_3일 != '']
+        else:
+            df = df.loc[df.구매_3일 >= int(set_start['구매3일_min'])]
+            df = df.loc[df.구매_3일 <= int(set_start['구매3일_max'])]
+        #구매
+        if set_start['구매'] == True:
+            df = df.loc[df.구매 != '']
+        else:
+            df = df.loc[df.구매 >= int(set_start['구매_min'])]
+            df = df.loc[df.구매 <= int(set_start['구매_max'])]
+        #리뷰
+        if set_start['리뷰'] == True:
+            df = df.loc[df.리뷰 != '']
+        else:
+            df = df.loc[df.리뷰 >= int(set_start['리뷰_min'])]
+            df = df.loc[df.리뷰 <= int(set_start['리뷰_max'])]
+        #찜
+        if set_start['찜'] == True:
+            df = df.loc[df.찜 != '']
+        else:
+            df = df.loc[df.찜 >= int(set_start['찜_min'])]
+            df = df.loc[df.찜 <= int(set_start['찜_max'])]
+        #문의
+        if set_start['문의'] == True:
+            df = df.loc[df.문의 != '']
+        else:
+            df = df.loc[df.문의 >= int(set_start['문의_min'])]
+            df = df.loc[df.문의 <= int(set_start['문의_max'])]
+        #몰등급
+        if set_start['전체등급'] == True:
+            df = df.loc[df.등급 != '']
+        else:
+            if set_start['플래티넘'] == False:
+                df = df.loc[df.등급 != '플래티넘']
+            if set_start['프리미엄'] == False:
+                df = df.loc[df.등급 != '프리미엄']
+            if set_start['빅파워'] == False:
+                df = df.loc[df.등급 != '빅파워']
+            if set_start['파워'] == False:
+                df = df.loc[df.등급 != '파워']
+            if set_start['새싹'] == False:
+                df = df.loc[df.등급 != '새싹']
+                df = df.loc[df.등급 != '씨앗']
+
+        #리스트 테이블 채우기        
+        try:
+            item_result_check = item_result.drop([0], axis = 0) #불량 트래킹
+            item_result_view = df
+        except:
+            time_bool = False
+            return
+
         self.parent.tableWidget.setColumnCount(len(item_result_view.columns))
 
         #인덱스는 최대 100까지 허용
@@ -97,19 +230,13 @@ class Thread1(QThread):
                 self.parent.tableWidget.setItem(i,j,QTableWidgetItem(str(item_result_view.iloc[i, j])))
 
         self.parent.table_result()
+
+        time_bool = False   
     
-    def stop(self):
-        self.working = False
-        self.quit()
-        self.wait(5000) #5000ms = 5s
-       
     def searching(self, keyword):
-        global rank
         global category_num
         global page_num
         global item_list
-
-        # keyword = self.keyword
 
         category_num += 1
         category_num_f = category_num
@@ -225,7 +352,6 @@ class Thread1(QThread):
                             sellerTags = ""
                             rank = '없음'
 
-
                             try:
                                 mallPcUrl = str(i['mallPcUrl'])
                                 smart = str('https://smart')
@@ -234,6 +360,7 @@ class Thread1(QThread):
                                     mallProductId = i['mallProductId']
                                     mallName = i['mallName']
                                     rank = i['rank']
+                                    # rank_set = i['rank']
                                     # purchaseCnt = i['purchaseCnt']
                                     reviewCount = i['reviewCount']
                                     openDate = int(i['openDate'])
@@ -312,22 +439,73 @@ class Thread1(QThread):
                                 print(str(keyword) + '의 ' + str(page) + '페이지, ' + str(rank) + "순위에서 상품수집 에러")
                                 pass
                         else:
-                            break
+                            return
+                            # break
                 except:
                     print(str(keyword) + '의 ' + str(page) + '페이지에서 에러')
                     break
 
             else:
-                break
+                return
+                # break
         else:
             return
 
     def stop(self):
         global stop_bool
         stop_bool = False
-        print("정지")
-        self.quit()
-        self.wait(3000)
+        # self.quit()
+        # self.wait(1000)
+
+#쓰레드2
+class Thread2(QThread):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+    #필터링 로직
+    def run(self):
+        global start_time
+        global time_bool
+        global df
+        global df_filter
+        global stop_bool
+        time_bool = True
+
+        if stop_bool == True:
+            #금지어 데이터프레임
+            df_filter = df.loc[df['상품명'].str.contains(filter_list)]
+            print(df_filter)
+            #필터링 데이터프레임
+            df = df.loc[~df['상품명'].str.contains(filter_list)]
+            print(df)
+            time_bool = False   
+        else:
+            time_bool = False
+
+#쓰레드3
+class Thread3(QThread):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+    #필터링 로직
+    def run(self):
+        global start_time
+        global time_bool
+        global item_result
+        global stop_bool
+        time_bool = True
+
+        print(item_result)
+        # if stop_bool == True:
+        #     #금지어 데이터프레임
+        #     df_filter = df.loc[df['상품명'].str.contains(filter_list)]
+        #     print(df_filter)
+        #     #필터링 데이터프레임
+        #     df = df.loc[~df['상품명'].str.contains(filter_list)]
+        #     print(df)
+        #     time_bool = False   
+        # else:
+        #     time_bool = False
 
 #로그인 인터페이스
 class Window_Login(QDialog, UI_Login):
@@ -834,7 +1012,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         time_bool = False
 
         self.timer = QTimer(self)                   # timer 변수에 QTimer 할당
-        self.timer.start(1000)                     # 10000msec(10sec) 마다 반복
+        self.timer.start(2000)                     # 10000msec(10sec) 마다 반복
         self.timer.timeout.connect(self.listbox_searching)    # start time out시 연결할 함수
     
     #실행 설정
@@ -844,7 +1022,8 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         self.setWindowTitle("머슭상품")
         self.setWindowIcon(QIcon("icon.png"))
         self.setStyleSheet(qdarktheme.load_stylesheet("light"))
-
+        # dt_now = datetime.datetime.now()
+        # keyword_date = dt_now.date()
         #MAC주소 불러오기
         self.label_mac.setText("MAC : "+ mac_address)
         #아이디 불러오기
@@ -899,6 +1078,9 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         self.checkBox_page_all.stateChanged.connect(self.page_all)
         self.spinBox_page_min.valueChanged.connect(self.page_changed)
         self.spinBox_page_max.valueChanged.connect(self.page_changed)
+        
+        #중지버튼 비활성화
+        self.pushButton.setEnabled(False)
 
     #옵션 기본값
     def option_standard_setting(self):
@@ -1661,6 +1843,121 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             '수집_max':self.spinBox_page_max.value()
             }
         self.textEdit_box.append("검색 설정값 적용을 완료하였습니다.")
+    #AI 상품 추천 시작
+    def start_product(self):
+        pass
+    
+    #AI 카테고리 추천 시작
+    def start_category(self):
+        global stop_bool
+        msg = QMessageBox()
+        #df 여부 확인
+        try:
+            df
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('검색을 진행한 후 다시 시도해주세요.')
+            msg.exec_()
+            return        
+
+        self.progressBar.setValue(0)
+
+        #AI 카테고리 추천 진행 확인
+        reply = QMessageBox.question(self, '확인', f'AI 카테고리 추천을 진행하시겠습니까?',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.Yes:
+            #모듈 로그 DB 입력
+            try:
+                con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                cur_user = con_user.cursor()
+                sql = f"INSERT INTO module_log (id, button, date) VALUES ('{db_id}','AI카테고리','{dt_now}');"
+                cur_user.execute(sql)
+            except:
+                msg.setWindowTitle('알림')
+                msg.setText('서버 이상으로 작동이 불가합니다.\n관리자에게 문의하세요.')
+                msg.exec_()
+                return
+            finally:
+                con_user.commit()
+                con_user.close()
+
+            #시작 시간
+            start_time = time.time()
+
+            #중지버튼 활성화
+            self.pushButton.setEnabled(True)
+
+            stop_bool = True
+
+            #멀티쓰레드 가동
+            thread = Thread3(self)
+            thread.start()
+
+            self.textEdit_box.append("AI 카테고리 추천이 완료되었습니다.")
+
+    #금지어 필터링 시작
+    def start_filtering(self):
+        global filter_list
+        global stop_bool
+        msg = QMessageBox()
+        #df 여부 확인
+        try:
+            df
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('검색을 진행한 후 다시 시도해주세요.')
+            msg.exec_()
+            return        
+
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM filtering_keyword WHERE version=%s;"
+            cur_user.execute(sql, 'V1')
+            filter_db = cur_user.fetchall()
+            filter_list = filter_db[0][2]
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('서버 접속에 실패하였습니다.\n관리자에게 문의하세요.')
+            msg.exec_()
+            return
+
+        self.progressBar.setValue(0)
+
+        #필터링 진행 확인
+        reply = QMessageBox.question(self, '확인', f'금지어 필터링을 진행하시겠습니까?\n(필터링된 내역도 엑셀 시트에서 볼 수 있습니다.)',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.Yes:
+            #필터링 로그 DB 입력
+            try:
+                con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                cur_user = con_user.cursor()
+                sql = f"INSERT INTO module_log (id, button, date) VALUES ('{db_id}','금지어','{dt_now}');"
+                cur_user.execute(sql)
+            except:
+                msg.setWindowTitle('알림')
+                msg.setText('서버 이상으로 필터링이 불가합니다.\n관리자에게 문의하세요.')
+                msg.exec_()
+                return
+            finally:
+                con_user.commit()
+                con_user.close()
+
+            #시작 시간
+            start_time = time.time()
+
+            #중지버튼 활성화
+            self.pushButton.setEnabled(True)
+
+            stop_bool = True
+
+            #멀티쓰레드 가동
+            thread = Thread2(self)
+            thread.start()
+
+            self.textEdit_box.append("금지어 필터링이 적용되었습니다.")
+            self.progressBar.setValue(100)
+            self.pushButton.setEnabled(False)
 
     #검색 시작
     def start_searching(self):
@@ -1673,20 +1970,49 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         global category_data
         global start_time
         global worker_cnt_f
+        global stop_bool
+        msg = QMessageBox()
 
+        if time_bool == True:
+            # msg.setWindowTitle('알림')
+            # msg.setText('작업 중지 후 2~3초 후 다시 검색을 시작할 수 있습니다.')
+            # msg.exec_()
+            return
+
+        if premium_days == 0:
+            msg.setWindowTitle('알림')
+            msg.setText('프리미엄 기간이 종료되었습니다.\n블로그 후기를 작성해서 멤버쉽을 연장해보세요!')
+            msg.exec_()
+            try:
+                con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+                cur_user = con_user.cursor()
+                sql = "SELECT * FROM web_link WHERE button=%s;"
+                cur_user.execute(sql, '하루남음')
+                free_seven = cur_user.fetchall()
+                webbrowser.open(free_seven[0][2])
+                return
+            except:
+                msg.setWindowTitle('알림')
+                msg.setText('홈페이지 접속에 실패하였습니다.\n관리자에게 문의하세요.')
+                msg.exec_()
+                return
+
+        if premium_days == 1:
+            msg.setWindowTitle('알림')
+            msg.setText('프리미엄 기간이 1일 남았습니다.\n미리 멤버쉽을 연장하시는걸 추천드려요!')
+            msg.exec_()
+            
         #데이터프레임 형성
-        item_list = [['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매(3일)','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명(L)','옵션','옵션(L)','태그','URL']]
+        item_list = [['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','URL']]
 
         #테이블 리셋    
         self.tableWidget.clear()
-        self.tableWidget.setHorizontalHeaderLabels(['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매(3일)','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명(L)','옵션','옵션(L)','태그','URL'])
+        self.tableWidget.setHorizontalHeaderLabels(['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','URL'])
 
         category_num = 0
         page_num = 0
 
         self.progressBar.setValue(0)
-
-        msg = QMessageBox()
 
         #시작 전 설정값 불러오기
         self.start_setting()
@@ -1740,39 +2066,57 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             finally:
                 con_user.commit()
                 con_user.close()
-#######################배포 전 변경(1을 0으로 그리고 사이트 주소 전체 확인)#############################
-            # if premium_days < 1:
-            if premium_days == 1:
-                msg.setWindowTitle('알림')
-                msg.setText('\n계속 진행하시려면 프리미엄 구독을 진행해주세요.')
-                msg.exec_()
-                webbrowser.open(url='https://youngmusk.imweb.me/TRAFFIC')
-                return
-            else:
-                #시작 시간
-                start_time = time.time()
-                self.textEdit_box.append("검색이 시작되었습니다.")
 
-                #멀티쓰레드 가동
-                thread = Thread1(self)
-                thread.start()
+            #시작 시간
+            start_time = time.time()
+            self.textEdit_box.append("검색이 시작되었습니다.")
+
+            #중지버튼 활성화
+            self.pushButton.setEnabled(True)
+
+            stop_bool = True
+
+            #멀티쓰레드 가동
+            thread = Thread1(self)
+            thread.start()
 
     #리스트 박스 검색중
     def listbox_searching(self):
         if time_bool == True:
-            page_cnt = category_count*(int(set_start['수집_max'])-int(set_start['수집_min'])+1)
-            self.textEdit_box.append(f"검색현황 - [ 카테고리 : {category_num}/{category_count} ] [ 페이지 : {page_num}/{page_cnt} ] [ 총 {len(item_list)}개 검색완료 ]")
-            self.progressBar.setValue(int(page_num/(category_count*(int(set_start['수집_max'])-int(set_start['수집_min'])+1))*100))
+            try:
+                page_cnt = category_count*(int(set_start['수집_max'])-int(set_start['수집_min'])+1)
+                self.textEdit_box.append(f"검색현황 - [ 카테고리 : {category_num}/{category_count} ] [ 페이지 : {page_num}/{page_cnt} ] [ 총 {len(item_list)}개 검색완료 ]")
+                self.progressBar.setValue(int(page_num/(category_count*(int(set_start['수집_max'])-int(set_start['수집_min'])+1))*100))
+            except:
+                pass
         else:
             pass
                     
     #검색 중지
     def stop_searching(self):
         global stop_bool
-        stop_bool = False
-        thread = Thread1(self)
-        thread.stop()
-        self.textEdit_box.append("검색이 중지되었습니다.")
+        msg = QMessageBox()
+
+        reply = QMessageBox.question(self, '확인', f'검색을 중지하시겠습니까?\n(잦은 검색 중지는 프로그램 에러의 원인이 될 수 있습니다.)',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.Yes:
+            #중지버튼 비활성화
+            self.pushButton.setEnabled(False)
+
+            try:
+                if premium_days == 0:
+                    msg.setWindowTitle('알림')
+                    msg.setText('프리미엄 기간이 종료되었습니다.\n블로그 후기를 작성해서 멤버쉽을 연장해보세요!')
+                    msg.exec_()
+                    return
+
+                stop_bool = False
+                # thread = Thread1(self)
+                # thread.stop()
+                self.textEdit_box.append("검색이 중지되었습니다.")
+
+            except:
+                return
 
     #박스 리셋
     def reset_box(self):
@@ -1796,20 +2140,31 @@ class Window_Analysis(QMainWindow, UI_Analysis):
 
     #엑셀 다운로드
     def excel_download(self):
+        global df
+        global df_filter
         msg = QMessageBox()
-
-        #CSV 파일로 저장하기
+        #df 여부 확인
         try:
-            item_result = pd.DataFrame.from_dict(item_list)
-            print(item_list)
-            file_name = QFileDialog.getSaveFileName(self, self.tr("검색결과"), "./", self.tr("CSV 파일 (*.csv)"))
+            df
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('검색을 진행한 후 다시 시도해주세요.')
+            msg.exec_()
+            return
+
+        #EXCEL 파일로 저장하기
+        try:
+            file_name = QFileDialog.getSaveFileName(self, self.tr("검색결과"), "./", self.tr("엑셀 파일 (*.xlsx)"))
+            writer = pd.ExcelWriter(file_name[0], engine = 'xlsxwriter')
             try:
-                print(file_name)
-                item_result.to_csv(file_name[0], header=False, encoding="utf-8-sig")
-                self.textEdit_box.append("검색 결과가 성공적으로 저장되었습니다.")
+                df.to_excel(writer, index=False, sheet_name = '최종본') 
             except:
-                self.textEdit_box.append("검색 결과 저장이 실패하였습니다.")
                 pass
+            try:
+                df_filter.to_excel(writer, index=False, sheet_name = '금지어')
+            except:
+                pass
+            writer.save()
         except:
             msg.setWindowTitle('알림')
             msg.setText('검색을 진행한 후 다시 시도해주세요.')
@@ -1918,7 +2273,7 @@ class Window_Free(QDialog, UI_Free):
             msg.exec_()
             return
         
-        if review_link in 'http':
+        if review_link != '':
             reply = QMessageBox.question(self, '확인', '블로그 후기 입력을 진행하시겠습니까?\n임의의 링크를 입력할 시 프로그램 권한이 삭제됩니다.',
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
             if reply == QMessageBox.Yes:
@@ -1955,14 +2310,14 @@ class Window_Free(QDialog, UI_Free):
             msg.setText('전체 주소를 입력해주세요. ex) http:...')
             msg.exec_()           
 
-    #7일 무료체험 공지글 확인하기
+    #3일 무료체험 공지글 확인하기
     def check_free(self):
         msg = QMessageBox()
         try:
             con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
             cur_user = con_user.cursor()
             sql = "SELECT * FROM web_link WHERE button=%s;"
-            cur_user.execute(sql, '7일 무료체험')
+            cur_user.execute(sql, '3일 무료체험')
             free_seven = cur_user.fetchall()
             webbrowser.open(free_seven[0][2])
         except:
@@ -1988,6 +2343,73 @@ class Window_Recommend(QDialog, UI_Recommend):
 
     def complete_interface(self):
         msg = QMessageBox()
+        recommend_cnt = 0
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM check_login WHERE id=%s;"
+            cur_user.execute(sql, db_id)
+            recommend_sen = cur_user.fetchall()
+            recommend_cnt = recommend_sen[0][6]
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('버젼 확인에 실패하였습니다.\n관리자에게 문의하세요.')
+            msg.exec_()
+            return
+
+        if recommend_cnt > 0:
+            msg.setWindowTitle('알림')
+            msg.setText('이미 추천인 혜택을 사용하셨기에 이용이 불가합니다.')
+            msg.exec_()
+            return
+
+        recommend_code = self.lineEdit.text()
+
+        if recommend_code == '':
+            msg.setWindowTitle('알림')
+            msg.setText('추천인 코드를 입력해주세요.')
+            msg.exec_()
+            return
+
+        try:
+            con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
+            cur_user = con_user.cursor()
+            sql = "SELECT * FROM recommend WHERE code=%s;"
+            cur_user.execute(sql, recommend_code)
+            recommend_sen = cur_user.fetchall()
+            check_rec_cnt = recommend_sen[0][2]
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('추천인 코드가 일치하지 않습니다.\n다시 입력해주세요.')
+            msg.exec_()
+            return
+        print(check_rec_cnt)
+        print(recommend_code)
+        if check_rec_cnt == recommend_code:
+            try:
+                msg.setWindowTitle('알림')
+                msg.setText('프리미엄 잔여일수가 3일 연장되었습니다.')
+                msg.exec_()
+
+                con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                cur_user = con_user.cursor()
+                #프로그램 버젼 확인
+                sql = "UPDATE recommend SET cnt=cnt+1 WHERE code=%s;"
+                cur_user.execute(sql, recommend_code)
+                sql = "UPDATE check_login SET recommend=recommend+1 WHERE id=%s;"
+                cur_user.execute(sql, db_id)
+                con_user.commit()
+                con_user.close()
+            except:
+                msg.setWindowTitle('알림')
+                msg.setText('버젼 확인에 실패하였습니다.\n관리자에게 문의주세요.')
+                msg.exec_()          
+        else:
+            msg.setWindowTitle('알림')
+            msg.setText('입력한 추천인 코드와 일치하는 코드가 없습니다.')
+            msg.exec_()
+            return    
+
 if __name__ == "__main__":
     app = QApplication(sys. argv)
     Window = Window_Login()

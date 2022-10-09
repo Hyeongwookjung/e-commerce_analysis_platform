@@ -131,7 +131,7 @@
            </size>
           </property>
           <property name="text">
-           <string>7일 무료체험</string>
+           <string>3일 무료체험</string>
           </property>
          </widget>
         </item>
@@ -1131,7 +1131,7 @@ Max = 100page</string>
               <item row="6" column="1">
                <widget class="QCheckBox" name="checkBox_level_new">
                 <property name="text">
-                 <string>새싹</string>
+                 <string>새싹↓</string>
                 </property>
                </widget>
               </item>
@@ -1907,6 +1907,11 @@ Max = 999,999,999원</string>
           <row/>
           <column>
            <property name="text">
+            <string>No</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
             <string>대분류</string>
            </property>
           </column>
@@ -1957,7 +1962,7 @@ Max = 999,999,999원</string>
           </column>
           <column>
            <property name="text">
-            <string>구매(3일)</string>
+            <string>구매_3일</string>
            </property>
           </column>
           <column>
@@ -2002,7 +2007,7 @@ Max = 999,999,999원</string>
           </column>
           <column>
            <property name="text">
-            <string>상품명(L)</string>
+            <string>상품명_L</string>
            </property>
           </column>
           <column>
@@ -2012,7 +2017,7 @@ Max = 999,999,999원</string>
           </column>
           <column>
            <property name="text">
-            <string>옵션(L)</string>
+            <string>옵션_L</string>
            </property>
           </column>
           <column>
@@ -2392,6 +2397,54 @@ Max = 999,999,999원</string>
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>pushButton_9</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>start_filtering()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>1086</x>
+     <y>770</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1290</x>
+     <y>749</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_10</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>start_category()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>1172</x>
+     <y>814</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1316</x>
+     <y>816</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_17</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>start_product()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>1243</x>
+     <y>861</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1291</x>
+     <y>871</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>keyword_interface()</slot>
@@ -2408,5 +2461,8 @@ Max = 999,999,999원</string>
   <slot>excel_download()</slot>
   <slot>free_interface()</slot>
   <slot>recommend_interface()</slot>
+  <slot>start_filtering()</slot>
+  <slot>start_category()</slot>
+  <slot>start_product()</slot>
  </slots>
 </ui>
