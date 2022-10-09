@@ -382,7 +382,7 @@
             </font>
            </property>
            <property name="text">
-            <string>※ 제목을 더블 클릭하여 상세내용을 확인해주세요.</string>
+            <string>※ 제목을 클릭하여 상세내용을 확인해주세요.</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignBottom|Qt::AlignLeading|Qt::AlignLeft</set>

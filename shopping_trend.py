@@ -507,6 +507,19 @@ class Thread3(QThread):
         # else:
         #     time_bool = False
 
+#쓰레드4
+class Thread4(QThread):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+    #필터링 로직
+    def run(self):
+        global start_time
+        global time_bool
+        global item_result
+        global stop_bool
+        time_bool = True
+
 #로그인 인터페이스
 class Window_Login(QDialog, UI_Login):
 
@@ -535,7 +548,7 @@ class Window_Login(QDialog, UI_Login):
         except:
             pass
 
-        self.tableWidget_news.doubleClicked.connect(self.get_news_click)
+        self.tableWidget_news.cellClicked.connect(self.get_news_click)
  
     #공지사항 클릭
     def get_news_click(self):
@@ -1843,10 +1856,55 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             '수집_max':self.spinBox_page_max.value()
             }
         self.textEdit_box.append("검색 설정값 적용을 완료하였습니다.")
+        
     #AI 상품 추천 시작
     def start_product(self):
-        pass
-    
+        global stop_bool
+        msg = QMessageBox()
+        #df 여부 확인
+        try:
+            df
+        except:
+            msg.setWindowTitle('알림')
+            msg.setText('검색을 진행한 후 다시 시도해주세요.')
+            msg.exec_()
+            return    
+
+        self.progressBar.setValue(0)
+
+        #AI 카테고리 추천 진행 확인
+        reply = QMessageBox.question(self, '확인', f'AI 상품 추천을 진행하시겠습니까?',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.Yes:
+            #모듈 로그 DB 입력
+            try:
+                con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                cur_user = con_user.cursor()
+                sql = f"INSERT INTO module_log (id, button, date) VALUES ('{db_id}','AI상품','{dt_now}');"
+                cur_user.execute(sql)
+            except:
+                msg.setWindowTitle('알림')
+                msg.setText('서버 이상으로 작동이 불가합니다.\n관리자에게 문의하세요.')
+                msg.exec_()
+                return
+            finally:
+                con_user.commit()
+                con_user.close()
+
+            #시작 시간
+            start_time = time.time()
+
+            #중지버튼 활성화
+            self.pushButton.setEnabled(True)
+
+            stop_bool = True
+
+            #멀티쓰레드 가동
+            thread = Thread4(self)
+            thread.start()
+
+            self.textEdit_box.append("AI 상품 추천이 완료되었습니다.")
+
     #AI 카테고리 추천 시작
     def start_category(self):
         global stop_bool
@@ -2151,7 +2209,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             msg.setText('검색을 진행한 후 다시 시도해주세요.')
             msg.exec_()
             return
-
+        file_name = ''
         #EXCEL 파일로 저장하기
         try:
             file_name = QFileDialog.getSaveFileName(self, self.tr("검색결과"), "./", self.tr("엑셀 파일 (*.xlsx)"))
@@ -2166,9 +2224,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
                 pass
             writer.save()
         except:
-            msg.setWindowTitle('알림')
-            msg.setText('검색을 진행한 후 다시 시도해주세요.')
-            msg.exec_()
+            pass
 
     def table_result(self):
         time.sleep(0.1)
