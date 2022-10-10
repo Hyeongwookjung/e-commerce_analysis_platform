@@ -56,6 +56,13 @@ from sklearn.model_selection import train_test_split, GridSearchCV, KFold, cross
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import scale, MinMaxScaler
 
+#자연어
+import collections
+from konlpy.tag import Okt
+from collections import Counter
+from math import gamma
+import xgboost
+
 #UI파일 연결
 UI_Login = uic.loadUiType("Login.ui")[0]
 UI_Register = uic.loadUiType("Register.ui")[0]
@@ -78,6 +85,7 @@ class Thread1(QThread):
         global item_list
         global item_result
         global df
+        global check_searching
         time_bool = True
 
         with ThreadPoolExecutor(max_workers=worker_cnt_f) as executor:
@@ -86,9 +94,14 @@ class Thread1(QThread):
                 thread_list.append(executor.submit(self.searching, keyword))
             for execution in concurrent.futures.as_completed(thread_list):
                 execution.result()
+        #비어있으면 종료
+        if len(item_list) == 0:
+            time_bool = False
+            return
+
         #데이터프레임 순위 정렬 및 결측치 제거
         df = pd.DataFrame.from_dict(data=item_list)
-        df.columns = ['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','URL']
+        df.columns = ['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL']
         df = df.drop([0], axis = 0)
         df = df.loc[df.순위 != '없음']
         df = df.astype({'No':'int'})
@@ -97,6 +110,8 @@ class Thread1(QThread):
         df.reset_index(drop=True, inplace=True)
         df.loc[df['찜'] == 'None', '찜'] = 0
         df.loc[df['평점'] == 'None', '평점'] = 0
+        # df = df[['등록일자', '카테고리']].dropna()
+        df[['등록일자', '카테고리']].dropna()
         df = df.astype({'판매유형':'str'})
         df = df.astype({'상품가격':'int'})
         df = df.astype({'등록일자':'int'})
@@ -108,6 +123,7 @@ class Thread1(QThread):
         df = df.astype({'카테고리':'int'})
         df = df.astype({'상품명_L':'int'})
         df = df.astype({'옵션_L':'int'})
+        df = df.astype({'태그_L':'int'})
         #국가/등급/판매유형 변경
         df.loc[df['제조국가'].str.contains('중국|china|CHINA|CN'),'제조국가']='중국'
         df.loc[df['제조국가'].str.contains('미국|멕시코|캐나다|CANADA'),'제조국가']='미국'
@@ -204,13 +220,10 @@ class Thread1(QThread):
                 df = df.loc[df.등급 != '새싹']
                 df = df.loc[df.등급 != '씨앗']
 
+        check_searching = True
         #리스트 테이블 채우기        
-        try:
-            item_result_check = item_result.drop([0], axis = 0) #불량 트래킹
-            item_result_view = df
-        except:
-            time_bool = False
-            return
+
+        item_result_view = df
 
         self.parent.tableWidget.setColumnCount(len(item_result_view.columns))
 
@@ -307,7 +320,7 @@ class Thread1(QThread):
         #페이지별로 검색    
         for page in range(int(set_start['수집_min']), int(set_start['수집_max'])+1):
             if stop_bool == True:
-                print(str(keyword) + ' 카테고리, ' + str(page) + ' 페이지')
+                # print(str(keyword) + ' 카테고리, ' + str(page) + ' 페이지')
                 page_num += 1
                 params = {
                     'sort': 'rel',
@@ -427,6 +440,7 @@ class Thread1(QThread):
                                     str(characterValue),
                                     str(len(characterValue)),
                                     str(manuTag),
+                                    str(len(manuTag)),
                                     str(mallProductUrl)
                                     ]
 
@@ -465,47 +479,173 @@ class Thread2(QThread):
     #필터링 로직
     def run(self):
         global start_time
-        global time_bool
+        global time_bool_filtering
         global df
         global df_filter
         global stop_bool
-        time_bool = True
+        global check_filtering
+        time_bool_filtering = True
+        try:
+            if stop_bool == True:
+                #금지어 데이터프레임
+                df_filter = df.loc[df['상품명'].str.contains(filter_list)]
+                print(df_filter)
+                #필터링 데이터프레임
+                df = df.loc[~df['상품명'].str.contains(filter_list)]
+                print(df)
+                time_bool_filtering = False   
+            else:
+                time_bool_filtering = False
+                return
+        except:
+            time_bool_filtering = False
 
-        if stop_bool == True:
-            #금지어 데이터프레임
-            df_filter = df.loc[df['상품명'].str.contains(filter_list)]
-            print(df_filter)
-            #필터링 데이터프레임
-            df = df.loc[~df['상품명'].str.contains(filter_list)]
-            print(df)
-            time_bool = False   
-        else:
-            time_bool = False
+        self.parent.table_result_filtering()
+        check_filtering = True
 
 #쓰레드3
 class Thread3(QThread):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
-    #필터링 로직
+    #카테고리 로직
     def run(self):
         global start_time
-        global time_bool
-        global item_result
+        global time_bool_category
+        global item_category
         global stop_bool
-        time_bool = True
+        global item_result
+        global category_all
+        global category_cnt
+        global check_category
+        time_bool_category = True
+        try:
+            if stop_bool == True:
+                ai_date = datetime.datetime.now()
+                ai_date = ai_date.date()
+                ai_date_n = ['%04d' % ai_date.year, '%02d' % ai_date.month,'%02d' % ai_date.day]
+                ai_date_n = ''.join(ai_date_n)
+                # print(ai_date_n)
+                ai_date = ai_date - datetime.timedelta(days=30)
+                ai_date = ['%04d' % ai_date.year, '%02d' % ai_date.month,'%02d' % ai_date.day]
+                ai_date_p = ''.join(ai_date)
+                # print(ai_date_p)
+                print(1)
+                #카테고리추천
+                # item_result = pd.read_excel('./aaa.xlsx', engine='openpyxl')
+                #중복카테고리 다 제거한 데이터프레임 생성
+                item_category = item_result.drop_duplicates(['카테고리'], ignore_index=True)
+                item_category = item_category[['No','대분류','중분류','소분류','세분류','카테고리']]
+                item_category.insert(6,'구매상품수_1개월','-')
+                item_category.insert(7,'등록상품수_1개월','-')
+                item_category.insert(8,'구매/등록','-')
+                item_category.insert(9,'경쟁강도_AI','-')
+                item_category.insert(10,'상품명 키워드 추천','-')
+                item_category.insert(11,'태그명 키워드 추천','-')
+                # print(item_category)
+                print(2)
 
-        print(item_result)
-        # if stop_bool == True:
-        #     #금지어 데이터프레임
-        #     df_filter = df.loc[df['상품명'].str.contains(filter_list)]
-        #     print(df_filter)
-        #     #필터링 데이터프레임
-        #     df = df.loc[~df['상품명'].str.contains(filter_list)]
-        #     print(df)
-        #     time_bool = False   
-        # else:
-        #     time_bool = False
+                #원핫인코딩
+                item_result.loc[item_result['구매'] == 0, '구매'] = 0
+                item_result.loc[item_result['구매'] != 0, '구매'] = 1
+                item_result.loc[item_result['찜'] == 0, '찜'] = 0
+                item_result.loc[item_result['찜'] != 0, '찜'] = 1
+                item_result.loc[item_result['문의'] == 0, '문의'] = 0
+                item_result.loc[item_result['문의'] != 0, '문의'] = 1
+                item_result.loc[item_result['옵션_L'] == '', '옵션_L'] = 0
+                item_result.loc[item_result['옵션_L'] != '', '옵션_L'] = 1
+                item_result.loc[item_result['태그_L'] == '', '태그_L'] = 0
+                item_result.loc[item_result['태그_L'] != '', '태그_L'] = 1
+                item_result = item_result[['카테고리','순위','등록일자','구매','찜','문의','상품명','옵션_L','태그','태그_L']]
+                item_result = item_result.astype({'카테고리':'int','순위':'int','등록일자':'int','구매':'int','찜':'int','문의':'int','옵션_L':'int','태그_L':'int'})
+                # print(item_result)
+                print(3)
+
+                #테스트 데이터프레임 생성
+                item_predict = pd.DataFrame({'순위':[1000],
+                                            '등록일자':[ai_date_n],
+                                            '구매':[0],
+                                            '찜':[0],
+                                            '문의':[0],
+                                            '옵션_L':[0],
+                                            '태그_L':[0]})
+                # print(item_predict)
+                ac_category = list(item_category['카테고리'])
+                category_all = len(ac_category)
+                print(4)
+########################################################1,2,3,4 없애기 테스트용도#######################
+                for idx, category in enumerate(ac_category):
+                    category_cnt += 1
+                    try:
+                        ac_category = (item_result.카테고리 == category)
+                        ac_date = (item_result.등록일자 > int(ai_date_p))
+                        ac_df = item_result.loc[ac_category & ac_date, ['순위', '등록일자', '구매', '찜', '문의', '옵션_L', '태그_L']]
+                        ac_pur = sum(list(ac_df['구매']))
+                        ac_app = len(list(ac_df['구매']))
+
+                        #머신러닝
+                        item_predict.loc[0, '등록일자'] = int(ac_df['등록일자'].max())
+                        item_predict.loc[0, '순위'] = int(ac_df['순위'].max())
+
+                        x_train = ac_df.drop(['구매'], axis=1)
+                        y_train = ac_df['구매']
+                        x_test = item_predict.drop(['구매'], axis=1)
+                        y_test = item_predict['구매']
+
+                        scaler = MinMaxScaler()
+                        scaler.fit(x_train)
+                        scaler.fit(x_test)
+
+                        x_train = scaler.transform(x_train)
+                        x_test = scaler.transform(x_test)
+
+                        kf = KFold(n_splits=10, random_state=1, shuffle=True)
+
+                        def rmsle(y_test, y_pred):
+                            return np.sqrt(mean_squared_error(y_test, y_pred))
+                        def cv_rmse(model, x_train=x_train):
+                            rmse = np.sqrt(-cross_val_score(model, x_train, y_train, scoings='meg_mean_squared_error', cv=kf))
+
+                        xgboost = XGBRegressor(learning_rate=0.3,
+                                                n_estimators=500,
+                                                max_depth=3,
+                                                min_child_weight=0,
+                                                gamma=0.6,
+                                                subsample=0.7,
+                                                colsample_bytree=0.7,
+                                                objective='reg:linear',
+                                                nthread=-1,
+                                                scale_pos_weight=1,
+                                                seed=27,
+                                                reg_alpha=0.00006,
+                                                random_state=42)
+                        xgb_model_full_data = xgboost.fit(x_train, y_train)
+                        # ac_result = xgb_model_full_data.predict(x_test)
+                        ac_result = '%0.4f' % float(xgb_model_full_data.predict(x_test))
+                        ac_sum = '%0.4f' % float(ac_pur/ac_app)
+                    except:
+                        ac_pur = '상품부족'
+                        ac_app = '-'
+                        ac_sum = '-'
+                        ac_result = '-'
+                    finally:
+                        item_category.loc[idx, '구매상품수_1개월'] = ac_pur
+                        item_category.loc[idx, '등록상품수_1개월'] = ac_app
+                        item_category.loc[idx, '구매/등록'] = ac_sum
+                        item_category.loc[idx, '경쟁강도_AI'] = ac_result
+
+                # print(item_category)
+                time_bool_category = False
+
+            else:
+                time_bool_category = False
+                return
+        except:
+            time_bool_category = False
+            ("오류발생")
+
+        self.parent.table_result_category()
+        check_category = True
 
 #쓰레드4
 class Thread4(QThread):
@@ -515,10 +655,78 @@ class Thread4(QThread):
     #필터링 로직
     def run(self):
         global start_time
-        global time_bool
-        global item_result
+        global time_bool_product
+        global item_category
         global stop_bool
-        time_bool = True
+        global item_result
+        global product_all
+        global product_cnt
+        global check_product
+        time_bool_product = True
+        try:
+            if stop_bool == True:
+                #상품추천
+                ai_date = datetime.datetime.now()
+                ai_date = ai_date.date()
+                ai_date = ai_date - datetime.timedelta(days=90)
+                ai_date = ['%04d' % ai_date.year, '%02d' % ai_date.month,'%02d' % ai_date.day]
+                ai_date_pp = ''.join(ai_date)
+                # print(ai_date_pp)
+                ai_category = list(item_category['카테고리'])
+                product_all = len(ai_category)
+                
+                for idx, category in enumerate(ai_category):
+                    product_cnt += 1
+                    try:
+                        item_result = item_result.astype({'등록일자':'int'})
+                        ai_category = (item_result.카테고리 == category)
+                        ai_date = (item_result.등록일자 > int(ai_date_pp))
+                        ai_pur = (item_result.구매 != 0)
+                        ai_zzim = (item_result.찜 != 0)
+                        ai_con = (item_result.문의 != 0)
+                        ai_df = item_result.loc[ai_category & ai_date & (ai_pur | ai_zzim | ai_con), ['상품명', '태그']]
+                        # print(ai_df)
+                        ai_title = ai_df['상품명'].tolist()
+                        ai_title = ' '.join(map(str, ai_title))
+                        ai_tag = ai_df['태그']
+                        ai_tag = ai_tag.dropna(axis=0)
+                        ai_tag = ai_tag.tolist()
+
+                        ai_tag = ' '.join(map(str, ai_tag))
+                        ai_title = ai_title.split(' ')
+                        ai_tag = ai_tag.split(',')
+
+                        ai_title_list = collections.Counter(ai_title)
+                        ai_tag_list = collections.Counter(ai_tag)
+                        ai_title_most = ai_title_list.most_common(10)
+                        ai_tag_most = ai_tag_list.most_common(10)
+                        ai_title_list = {}
+                        ai_tag_list = {}
+                        for n, c in ai_title_most:
+                            ai_title_list[n] = c
+                        for n, c in ai_tag_most:
+                            ai_tag_list[n] = c
+                        ai_title_list = ' '.join(map(str, ai_title_list.keys()))
+                        ai_tag_list = ' '.join(map(str, ai_tag_list.keys()))
+                    except:
+                        ai_title_list = '상품부족'
+                        ai_title_most = '-'
+                    
+                    finally:
+                        item_category.loc[idx, '상품명 키워드 추천'] = ai_title_list
+                        item_category.loc[idx, '태그명 키워드 추천'] = ai_tag_list
+
+                time_bool_product = False
+
+            else:
+                time_bool_product = False
+                return
+        except:
+            time_bool_product = False
+            ("오류발생")
+        
+        self.parent.table_result_product()
+        check_product = True
 
 #로그인 인터페이스
 class Window_Login(QDialog, UI_Login):
@@ -1018,11 +1226,38 @@ class Window_Analysis(QMainWindow, UI_Analysis):
 
         global category_count
         global category_num
+
+        global category_cnt
+        global category_all
+        global product_cnt
+        global product_all
+
         global time_bool
+        global time_bool_filtering
+        global time_bool_category
+        global time_bool_product
+
+        global check_searching
+        global check_filtering
+        global check_category
+        global check_product
+
+        check_searching = False
+        check_filtering = False
+        check_category = False
+        check_product = False
 
         category_num = 0
         category_count = 0
+        category_cnt = 0
+        category_all = 0
+        product_cnt = 0
+        product_all = 0
+
         time_bool = False
+        time_bool_filtering = False
+        time_bool_category = False
+        time_bool_product = False
 
         self.timer = QTimer(self)                   # timer 변수에 QTimer 할당
         self.timer.start(2000)                     # 10000msec(10sec) 마다 반복
@@ -1860,7 +2095,34 @@ class Window_Analysis(QMainWindow, UI_Analysis):
     #AI 상품 추천 시작
     def start_product(self):
         global stop_bool
+        global start_time
+        global product_cnt
+        global product_all
+
         msg = QMessageBox()
+
+        # 진행중일때 리턴
+        if time_bool != False:
+            msg.setWindowTitle('알림')
+            msg.setText('검색 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_filtering != False:
+            msg.setWindowTitle('알림')
+            msg.setText('필터링 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_category != False:
+            msg.setWindowTitle('알림')
+            msg.setText('카테고리 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_product != False:
+            msg.setWindowTitle('알림')
+            msg.setText('상품 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+
         #df 여부 확인
         try:
             df
@@ -1869,8 +2131,6 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             msg.setText('검색을 진행한 후 다시 시도해주세요.')
             msg.exec_()
             return    
-
-        self.progressBar.setValue(0)
 
         #AI 카테고리 추천 진행 확인
         reply = QMessageBox.question(self, '확인', f'AI 상품 추천을 진행하시겠습니까?',
@@ -1899,26 +2159,59 @@ class Window_Analysis(QMainWindow, UI_Analysis):
 
             stop_bool = True
 
+            product_cnt = 0
+            product_all = 0
+            self.textEdit_box.append("AI 상품 추천이 시작되었습니다.")
+            self.progressBar.setValue(0)
+
             #멀티쓰레드 가동
             thread = Thread4(self)
             thread.start()
 
-            self.textEdit_box.append("AI 상품 추천이 완료되었습니다.")
 
     #AI 카테고리 추천 시작
     def start_category(self):
         global stop_bool
+        global start_time
+        global category_cnt
+        global category_all
+        global check_searching
+        global check_category
         msg = QMessageBox()
-        #df 여부 확인
-        try:
-            df
-        except:
+
+        # 진행중일때 리턴
+        if time_bool != False:
+            msg.setWindowTitle('알림')
+            msg.setText('검색 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_filtering != False:
+            msg.setWindowTitle('알림')
+            msg.setText('필터링 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_category != False:
+            msg.setWindowTitle('알림')
+            msg.setText('카테고리 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_product != False:
+            msg.setWindowTitle('알림')
+            msg.setText('상품 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+
+        if check_searching != True:
             msg.setWindowTitle('알림')
             msg.setText('검색을 진행한 후 다시 시도해주세요.')
             msg.exec_()
-            return        
+            return    
 
-        self.progressBar.setValue(0)
+        if check_category == True:
+            msg.setWindowTitle('알림')
+            msg.setText('이미 카테고리 분석 작업이 완료되었습니다.\n다음 작업을 시도해주세요.')
+            msg.exec_()
+            return    
 
         #AI 카테고리 추천 진행 확인
         reply = QMessageBox.question(self, '확인', f'AI 카테고리 추천을 진행하시겠습니까?',
@@ -1939,6 +2232,8 @@ class Window_Analysis(QMainWindow, UI_Analysis):
                 con_user.commit()
                 con_user.close()
 
+            check_category = False
+            
             #시작 시간
             start_time = time.time()
 
@@ -1947,25 +2242,57 @@ class Window_Analysis(QMainWindow, UI_Analysis):
 
             stop_bool = True
 
+            category_cnt = 0
+            category_all = 0
+            self.textEdit_box.append("AI 카테고리 추천이 시작되었습니다.")
+            self.progressBar.setValue(0)
+
             #멀티쓰레드 가동
             thread = Thread3(self)
             thread.start()
-
-            self.textEdit_box.append("AI 카테고리 추천이 완료되었습니다.")
 
     #금지어 필터링 시작
     def start_filtering(self):
         global filter_list
         global stop_bool
+        global start_time
+        global check_filtering
+        global check_searching
         msg = QMessageBox()
-        #df 여부 확인
-        try:
-            df
-        except:
+
+        # 진행중일때 리턴
+        if time_bool != False:
+            msg.setWindowTitle('알림')
+            msg.setText('검색 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_filtering != False:
+            msg.setWindowTitle('알림')
+            msg.setText('필터링 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_category != False:
+            msg.setWindowTitle('알림')
+            msg.setText('카테고리 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_product != False:
+            msg.setWindowTitle('알림')
+            msg.setText('상품 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+
+        if check_searching != True:
             msg.setWindowTitle('알림')
             msg.setText('검색을 진행한 후 다시 시도해주세요.')
             msg.exec_()
-            return        
+            return
+
+        if check_filtering == True:
+            msg.setWindowTitle('알림')
+            msg.setText('이미 금지어 필터링 작업이 완료되었습니다.\n다음 작업을 시도해주세요.')
+            msg.exec_()
+            return    
 
         try:
             con_user = pymysql.connect(host='3.39.22.73', user='young_read', password='0000', db='trend', charset='utf8')
@@ -1979,8 +2306,6 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             msg.setText('서버 접속에 실패하였습니다.\n관리자에게 문의하세요.')
             msg.exec_()
             return
-
-        self.progressBar.setValue(0)
 
         #필터링 진행 확인
         reply = QMessageBox.question(self, '확인', f'금지어 필터링을 진행하시겠습니까?\n(필터링된 내역도 엑셀 시트에서 볼 수 있습니다.)',
@@ -2001,6 +2326,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
                 con_user.commit()
                 con_user.close()
 
+            check_filtering = False
             #시작 시간
             start_time = time.time()
 
@@ -2009,13 +2335,12 @@ class Window_Analysis(QMainWindow, UI_Analysis):
 
             stop_bool = True
 
+            self.textEdit_box.append("금지어 필터링이 시작되었습니다.")
+            self.progressBar.setValue(0)
+
             #멀티쓰레드 가동
             thread = Thread2(self)
             thread.start()
-
-            self.textEdit_box.append("금지어 필터링이 적용되었습니다.")
-            self.progressBar.setValue(100)
-            self.pushButton.setEnabled(False)
 
     #검색 시작
     def start_searching(self):
@@ -2029,12 +2354,33 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         global start_time
         global worker_cnt_f
         global stop_bool
+        global check_searching
+        global check_filtering
+        global check_category
+        global check_product
+
         msg = QMessageBox()
 
-        if time_bool == True:
-            # msg.setWindowTitle('알림')
-            # msg.setText('작업 중지 후 2~3초 후 다시 검색을 시작할 수 있습니다.')
-            # msg.exec_()
+        # 진행중일때 리턴
+        if time_bool != False:
+            msg.setWindowTitle('알림')
+            msg.setText('검색 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_filtering != False:
+            msg.setWindowTitle('알림')
+            msg.setText('필터링 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_category != False:
+            msg.setWindowTitle('알림')
+            msg.setText('카테고리 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_product != False:
+            msg.setWindowTitle('알림')
+            msg.setText('상품 분석 작업이 진행중입니다.')
+            msg.exec_()
             return
 
         if premium_days == 0:
@@ -2059,14 +2405,18 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             msg.setWindowTitle('알림')
             msg.setText('프리미엄 기간이 1일 남았습니다.\n미리 멤버쉽을 연장하시는걸 추천드려요!')
             msg.exec_()
+
+        check_searching = False
+        check_filtering = False
+        check_category = False
+        check_product = False
             
         #데이터프레임 형성
-        item_list = [['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','URL']]
+        item_list = [['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL']]
 
         #테이블 리셋    
         self.tableWidget.clear()
-        self.tableWidget.setHorizontalHeaderLabels(['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','URL'])
-
+        self.tableWidget.setHorizontalHeaderLabels(['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL'])
         category_num = 0
         page_num = 0
 
@@ -2143,8 +2493,25 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         if time_bool == True:
             try:
                 page_cnt = category_count*(int(set_start['수집_max'])-int(set_start['수집_min'])+1)
-                self.textEdit_box.append(f"검색현황 - [ 카테고리 : {category_num}/{category_count} ] [ 페이지 : {page_num}/{page_cnt} ] [ 총 {len(item_list)}개 검색완료 ]")
+                self.textEdit_box.append(f"검색 진행중 - [ 카테고리 : {category_num}/{category_count} ] [ 페이지 : {page_num}/{page_cnt} ] [ 총 {len(item_list)}개 검색완료 ]")
                 self.progressBar.setValue(int(page_num/(category_count*(int(set_start['수집_max'])-int(set_start['수집_min'])+1))*100))
+            except:
+                pass
+        elif time_bool_filtering == True:
+            try:
+                self.textEdit_box.append(f"필터링 진행중")
+            except:
+                pass
+        elif time_bool_category == True:
+            try:
+                self.textEdit_box.append(f"카테고리 분석중 - [ 카테고리 : {category_cnt}/{category_all}]")
+                self.progressBar.setValue(int(category_cnt/category_all)*100)
+            except:
+                pass
+        elif time_bool_product == True:
+            try:
+                self.textEdit_box.append(f"상품 분석중 - [ 카테고리 : {product_cnt}/{product_all}]")
+                self.progressBar.setValue(int(product_cnt/product_all)*100)
             except:
                 pass
         else:
@@ -2153,6 +2520,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
     #검색 중지
     def stop_searching(self):
         global stop_bool
+        global time_bool
         msg = QMessageBox()
 
         reply = QMessageBox.question(self, '확인', f'검색을 중지하시겠습니까?\n(잦은 검색 중지는 프로그램 에러의 원인이 될 수 있습니다.)',
@@ -2167,8 +2535,8 @@ class Window_Analysis(QMainWindow, UI_Analysis):
                     msg.setText('프리미엄 기간이 종료되었습니다.\n블로그 후기를 작성해서 멤버쉽을 연장해보세요!')
                     msg.exec_()
                     return
-
                 stop_bool = False
+                time_bool = False
                 # thread = Thread1(self)
                 # thread.stop()
                 self.textEdit_box.append("검색이 중지되었습니다.")
@@ -2200,7 +2568,31 @@ class Window_Analysis(QMainWindow, UI_Analysis):
     def excel_download(self):
         global df
         global df_filter
+        global item_category
         msg = QMessageBox()
+
+        # 진행중일때 리턴
+        if time_bool != False:
+            msg.setWindowTitle('알림')
+            msg.setText('검색 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_filtering != False:
+            msg.setWindowTitle('알림')
+            msg.setText('필터링 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_category != False:
+            msg.setWindowTitle('알림')
+            msg.setText('카테고리 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+        if time_bool_product != False:
+            msg.setWindowTitle('알림')
+            msg.setText('상품 분석 작업이 진행중입니다.')
+            msg.exec_()
+            return
+
         #df 여부 확인
         try:
             df
@@ -2222,20 +2614,47 @@ class Window_Analysis(QMainWindow, UI_Analysis):
                 df_filter.to_excel(writer, index=False, sheet_name = '금지어')
             except:
                 pass
+            try:
+                item_category.to_excel(writer, index=False, sheet_name = 'AI 추천')
+            except:
+                pass
             writer.save()
         except:
             pass
 
     def table_result(self):
         time.sleep(0.1)
-
         self.tableWidget.repaint()
-
         self.progressBar.setValue(100)
         self.textEdit_box.append("검색 소요 시간 : %s초" % int(time.time() - start_time))
         self.textEdit_box.append("검색이 완료되었습니다.")
+        #중지버튼 비활성화
+        self.pushButton.setEnabled(False)
 
-
+    def table_result_filtering(self):
+        time.sleep(0.1)
+        self.progressBar.setValue(100)
+        self.textEdit_box.append("금지어 필터링 소요 시간 : %s초" % int(time.time() - start_time))
+        self.textEdit_box.append("금지어 필터링이 완료되었습니다.")
+        #중지버튼 비활성화
+        self.pushButton.setEnabled(False)
+        
+    def table_result_category(self):
+        time.sleep(0.1)
+        self.progressBar.setValue(100)
+        self.textEdit_box.append("AI 카테고리 추천 소요 시간 : %s초" % int(time.time() - start_time))
+        self.textEdit_box.append("AI 카테고리 추천이 완료되었습니다.")
+        #중지버튼 비활성화
+        self.pushButton.setEnabled(False)
+        
+    def table_result_product(self):
+        time.sleep(0.1)
+        self.progressBar.setValue(100)
+        self.textEdit_box.append("AI 상품 추천 소요 시간 : %s초" % int(time.time() - start_time))
+        self.textEdit_box.append("AI 상품 추천이 완료되었습니다.")
+        #중지버튼 비활성화
+        self.pushButton.setEnabled(False)
+        
 class Window_Keyword(QDialog, UI_Keyword):
     
     #기본 설정

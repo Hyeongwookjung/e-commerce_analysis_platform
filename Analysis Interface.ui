@@ -1909,125 +1909,208 @@ Max = 999,999,999원</string>
            <property name="text">
             <string>No</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>대분류</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>중분류</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>소분류</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>세분류</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>카테고리</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>순위</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>판매유형</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>제조국가</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>상품가격</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>등록일자</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>구매_3일</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>구매</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>리뷰</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>찜</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>문의</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>평점</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>스토어명</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>등급</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>상품명</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>상품명_L</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>옵션</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
           <column>
            <property name="text">
             <string>옵션_L</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>태그</string>
            </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>태그_L</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
+           </property>
           </column>
           <column>
            <property name="text">
             <string>URL</string>
+           </property>
+           <property name="textAlignment">
+            <set>AlignCenter</set>
            </property>
           </column>
          </widget>
