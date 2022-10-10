@@ -10,6 +10,8 @@ from tkinter.ttk import Progressbar
 from django import get_version
 import pymysql
 import sqlite3
+from sqlalchemy import create_engine
+
 # from test import fetcher
 # pyrcc5 test.qrc -o ./test_rc.py
 
@@ -28,7 +30,7 @@ from PyQt5.QtWidgets import QDialog, QMainWindow, QApplication, QMessageBox, QFi
 from PyQt5 import QtGui
 # from PyQt5 import QtCore, QtGui, QtWidgets
 import qdarktheme
-from PyQt5.QtCore import Qt, QDate, QCoreApplication, QThread, QTimer
+from PyQt5.QtCore import Qt, QDate, QCoreApplication, QThread, QTimer, pyqtSignal, QObject, pyqtSlot
 # from PyQt5.QtCore import *
 #pip install pyqtdarktheme
 
@@ -74,6 +76,8 @@ UI_Free = uic.loadUiType("Free.ui")[0]
 
 #쓰레드
 class Thread1(QThread):
+    # user_signal = pyqtSignal()
+    #시그널
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
@@ -84,8 +88,10 @@ class Thread1(QThread):
         global worker_cnt_f
         global item_list
         global item_result
+        global item_result_view
         global df
         global check_searching
+        global mariadb
         time_bool = True
 
         with ThreadPoolExecutor(max_workers=worker_cnt_f) as executor:
@@ -141,7 +147,21 @@ class Thread1(QThread):
         df.loc[df['판매유형'].str.contains('0'),'판매유형']='국내'
         df.loc[df['판매유형'].str.contains('1'),'판매유형']='해외'
 
+        #Item Log DB에 회원정보 저장
+        m_now = datetime.datetime.now()
+        m_now = m_now.date()
+        m_noww = ['%04d' % m_now.year, '%02d' % m_now.month,'%02d' % m_now.day]
+        m_noww = ''.join(m_noww)
+        m_pre = m_now - datetime.timedelta(days=7)
+        m_pre = ['%04d' % m_pre.year, '%02d' % m_pre.month,'%02d' % m_pre.day]
+        m_pre = ''.join(m_pre)
+        # print(m_pre)
+
+        mariadb = df.loc[((df.구매 > 0)| (df.문의 > 0)) & (df.등록일자 > int(m_pre))]
+        mariadb.insert(0,'검색일자',m_noww)
+
         item_result = df
+
         #제조국가
         if set_start['전체국가'] == True:
             df = df.loc[df.제조국가 != '']
@@ -225,25 +245,10 @@ class Thread1(QThread):
 
         item_result_view = df
 
-        self.parent.tableWidget.setColumnCount(len(item_result_view.columns))
-
-        #인덱스는 최대 100까지 허용
-        if len(item_result_view.index) > 1000:
-            row_cnt = 1000
-        else:
-            row_cnt = len(item_result_view.index)
-
-        self.parent.tableWidget.setRowCount(row_cnt)
-
-        for i in range(0, 35):
-            self.parent.tableWidget.setColumnWidth(i, int(self.parent.width()*1/20))
-
-        for i in range(row_cnt):
-            for j in range(len(item_result_view.columns)):
-                self.parent.tableWidget.setItem(i,j,QTableWidgetItem(str(item_result_view.iloc[i, j])))
-
         self.parent.table_result()
-
+        #시그널
+        # self.user_signal.emit()
+        # self.parent.user_signal.emit()
         time_bool = False   
     
     def searching(self, keyword):
@@ -450,13 +455,13 @@ class Thread1(QThread):
                                     pass
                                 
                             except:
-                                print(str(keyword) + '의 ' + str(page) + '페이지, ' + str(rank) + "순위에서 상품수집 에러")
+                                # print(str(keyword) + '의 ' + str(page) + '페이지, ' + str(rank) + "순위에서 상품수집 에러")
                                 pass
                         else:
                             return
                             # break
                 except:
-                    print(str(keyword) + '의 ' + str(page) + '페이지에서 에러')
+                    # print(str(keyword) + '의 ' + str(page) + '페이지에서 에러')
                     break
 
             else:
@@ -489,10 +494,10 @@ class Thread2(QThread):
             if stop_bool == True:
                 #금지어 데이터프레임
                 df_filter = df.loc[df['상품명'].str.contains(filter_list)]
-                print(df_filter)
+                # print(df_filter)
                 #필터링 데이터프레임
                 df = df.loc[~df['상품명'].str.contains(filter_list)]
-                print(df)
+                # print(df)
                 time_bool_filtering = False   
             else:
                 time_bool_filtering = False
@@ -799,7 +804,7 @@ class Window_Login(QDialog, UI_Login):
             cur_user.execute(sql, 'V1')
             check_version = cur_user.fetchall()
             check_run = check_version[0][2]
-            print(check_run)
+            # print(check_run)
         except:
             msg.setWindowTitle('알림')
             msg.setText('버젼 확인이 실패하였습니다.\n관리자에게 문의하세요.')
@@ -1023,7 +1028,7 @@ class Window_Register(QDialog, UI_Register):
             con_user.commit()
             con_user.close()
 
-        print(check_id)
+        # print(check_id)
 
         if check_id == 1:
             msg.setWindowTitle('알림')
@@ -1283,6 +1288,10 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             premium_days = 0
         self.label_premium.setText("프리미엄 잔여일수 : "+ str(premium_days))
 
+        #시그널
+        # worker= Thread1(self)
+        # worker.user_signal.connect(self.user_slot)
+
         #카테고리 불러오기
         self.import_category()
         self.comboBox_level_1.activated[str].connect(self.level_1)
@@ -1515,7 +1524,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         try:
             with open(file_name[0], 'rb') as fr:
                 set = pickle.load(fr)
-            print(set)
+            # print(set)
         except:
             return
         
@@ -2098,6 +2107,9 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         global start_time
         global product_cnt
         global product_all
+        global check_searching
+        global check_category
+        global check_product
 
         msg = QMessageBox()
 
@@ -2123,12 +2135,21 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             msg.exec_()
             return
 
-        #df 여부 확인
-        try:
-            df
-        except:
+        if check_searching != True:
             msg.setWindowTitle('알림')
             msg.setText('검색을 진행한 후 다시 시도해주세요.')
+            msg.exec_()
+            return    
+
+        if check_category != True:
+            msg.setWindowTitle('알림')
+            msg.setText('AI기반 카테고리 추천을 먼저 진행해주세요.')
+            msg.exec_()
+            return    
+
+        if check_product == True:
+            msg.setWindowTitle('알림')
+            msg.setText('이미 상품 분석 작업이 완료되었습니다.\n엑셀 다운로드를 진행해주세요.')
             msg.exec_()
             return    
 
@@ -2150,6 +2171,8 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             finally:
                 con_user.commit()
                 con_user.close()
+
+            check_product = False
 
             #시작 시간
             start_time = time.time()
@@ -2463,12 +2486,27 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             try:
                 con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
                 cur_user = con_user.cursor()
-                print(db_id,estimated_time,premium_days,worker_cnt,keyword_list_db,set_start,dt_now)
+                # print(db_id,estimated_time,premium_days,worker_cnt,keyword_list_db,set_start,dt_now)
                 sql = f"INSERT INTO searching_log (id, estimated_time, premium, worker, keyword_list, setting, today) VALUES ('{db_id}','{estimated_time}','{premium_days}','{worker_cnt}','{keyword_list_db}','{set_start_db}','{dt_now}');"
                 cur_user.execute(sql)
             except:
                 msg.setWindowTitle('알림')
                 msg.setText('서버 이상으로 검색이 불가합니다.\n관리자에게 문의하세요.')
+                msg.exec_()
+                return
+            finally:
+                con_user.commit()
+                con_user.close()
+
+            #모듈 로그 DB 입력
+            try:
+                con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                cur_user = con_user.cursor()
+                sql = f"INSERT INTO module_log (id, button, date) VALUES ('{db_id}','검색 시작','{dt_now}');"
+                cur_user.execute(sql)
+            except:
+                msg.setWindowTitle('알림')
+                msg.setText('서버 이상으로 작동이 불가합니다.\n관리자에게 문의하세요.')
                 msg.exec_()
                 return
             finally:
@@ -2490,6 +2528,8 @@ class Window_Analysis(QMainWindow, UI_Analysis):
 
     #리스트 박스 검색중
     def listbox_searching(self):
+        self.tableWidget.repaint()
+        
         if time_bool == True:
             try:
                 page_cnt = category_count*(int(set_start['수집_max'])-int(set_start['수집_min'])+1)
@@ -2528,6 +2568,21 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         if reply == QMessageBox.Yes:
             #중지버튼 비활성화
             self.pushButton.setEnabled(False)
+
+            #모듈 로그 DB 입력
+            try:
+                con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                cur_user = con_user.cursor()
+                sql = f"INSERT INTO module_log (id, button, date) VALUES ('{db_id}','검색 중지','{dt_now}');"
+                cur_user.execute(sql)
+            except:
+                msg.setWindowTitle('알림')
+                msg.setText('서버 이상으로 작동이 불가합니다.\n관리자에게 문의하세요.')
+                msg.exec_()
+                return
+            finally:
+                con_user.commit()
+                con_user.close()
 
             try:
                 if premium_days == 0:
@@ -2569,6 +2624,11 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         global df
         global df_filter
         global item_category
+        global check_searching
+        global check_filtering
+        global check_category
+        global check_product
+
         msg = QMessageBox()
 
         # 진행중일때 리턴
@@ -2593,43 +2653,92 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             msg.exec_()
             return
 
-        #df 여부 확인
-        try:
-            df
-        except:
+        if check_searching != True:
             msg.setWindowTitle('알림')
             msg.setText('검색을 진행한 후 다시 시도해주세요.')
             msg.exec_()
-            return
+            return    
+
         file_name = ''
         #EXCEL 파일로 저장하기
         try:
             file_name = QFileDialog.getSaveFileName(self, self.tr("검색결과"), "./", self.tr("엑셀 파일 (*.xlsx)"))
+            #모듈 로그 DB 입력
+            try:
+                con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                cur_user = con_user.cursor()
+                sql = f"INSERT INTO module_log (id, button, date) VALUES ('{db_id}','엑셀 다운로드','{dt_now}');"
+                cur_user.execute(sql)
+            except:
+                msg.setWindowTitle('알림')
+                msg.setText('서버 이상으로 작동이 불가합니다.\n관리자에게 문의하세요.')
+                msg.exec_()
+                return
+            finally:
+                con_user.commit()
+                con_user.close()
+
             writer = pd.ExcelWriter(file_name[0], engine = 'xlsxwriter')
-            try:
-                df.to_excel(writer, index=False, sheet_name = '최종본') 
-            except:
-                pass
-            try:
-                df_filter.to_excel(writer, index=False, sheet_name = '금지어')
-            except:
-                pass
-            try:
-                item_category.to_excel(writer, index=False, sheet_name = 'AI 추천')
-            except:
-                pass
+            if check_searching == True:
+                try:
+                    df.to_excel(writer, index=False, sheet_name = '최종본') 
+                except:
+                    pass
+            if check_filtering == True:
+                try:
+                    df_filter.to_excel(writer, index=False, sheet_name = '금지어')
+                except:
+                    pass
+            if check_category == True:
+                try:
+                    item_category.to_excel(writer, index=False, sheet_name = 'AI 추천')
+                except:
+                    pass
             writer.save()
         except:
             pass
 
     def table_result(self):
+        global item_result_view
         time.sleep(0.1)
-        self.tableWidget.repaint()
+        self.tableWidget.setColumnCount(len(item_result_view.columns))
+
+        #인덱스는 최대 100까지 허용
+        if len(item_result_view.index) > 1000:
+            row_cnt = 1000
+        else:
+            row_cnt = len(item_result_view.index)
+
+        self.tableWidget.setRowCount(row_cnt)
+
+        for i in range(0, 35):
+            self.tableWidget.setColumnWidth(i, int(self.width()*1/20))
+
+        for i in range(row_cnt):
+            for j in range(len(item_result_view.columns)):
+                self.tableWidget.setItem(i,j,QTableWidgetItem(str(item_result_view.iloc[i, j])))
+
+        # self.tableWidget.repaint()
+
         self.progressBar.setValue(100)
         self.textEdit_box.append("검색 소요 시간 : %s초" % int(time.time() - start_time))
         self.textEdit_box.append("검색이 완료되었습니다.")
+
+        #Item Log DB에 회원정보 저장
+        try:
+            db_connection_str = 'mysql+pymysql://young_write:0000@3.39.22.73/trend'
+            db_connection = create_engine(db_connection_str)
+            conn = db_connection.connect()
+            mariadb.to_sql(name='item_log', con=db_connection, if_exists='append',index=False)
+        except:
+            pass
         #중지버튼 비활성화
         self.pushButton.setEnabled(False)
+
+    # @pyqtSlot()
+    #시그널
+    # def user_slot(self):
+    #     print("2222")
 
     def table_result_filtering(self):
         time.sleep(0.1)
@@ -2686,6 +2795,20 @@ class Window_Keyword(QDialog, UI_Keyword):
                 msg.setText('등록을 원하시는 키워드를 입력하신 후 다시 시도해주세요.')
                 msg.exec_()
             else:
+                #모듈 로그 DB 입력
+                try:
+                    con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
+                    cur_user = con_user.cursor()
+                    sql = f"INSERT INTO module_log (id, button, date) VALUES ('{db_id}','금지어 등록','{dt_now}');"
+                    cur_user.execute(sql)
+                except:
+                    msg.setWindowTitle('알림')
+                    msg.setText('서버 이상으로 작동이 불가합니다.\n관리자에게 문의하세요.')
+                    msg.exec_()
+                    return
+                finally:
+                    con_user.commit()
+                    con_user.close()
                 try:
                     con_user = pymysql.connect(host='3.39.22.73', user='young_write', password='0000', db='trend', charset='utf8')
                     cur_user = con_user.cursor()
@@ -2858,8 +2981,8 @@ class Window_Recommend(QDialog, UI_Recommend):
             msg.setText('추천인 코드가 일치하지 않습니다.\n다시 입력해주세요.')
             msg.exec_()
             return
-        print(check_rec_cnt)
-        print(recommend_code)
+        # print(check_rec_cnt)
+        # print(recommend_code)
         if check_rec_cnt == recommend_code:
             try:
                 msg.setWindowTitle('알림')
