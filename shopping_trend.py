@@ -2,6 +2,7 @@
 from ast import keyword
 # from asyncio import FastChildWatcher
 from atexit import register
+from distutils.util import rfc822_escape
 from glob import glob
 
 #DB모듈
@@ -10,6 +11,7 @@ from tkinter.ttk import Progressbar
 from django import get_version
 import pymysql
 import sqlite3
+from sklearn.ensemble import RandomForestRegressor
 from sqlalchemy import create_engine
 
 # from test import fetcher
@@ -51,7 +53,7 @@ import pandas as pd
 import numpy as np
 import warnings
 warnings.filterwarnings(action='ignore')
-from xgboost import XGBRegressor
+# from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold, cross_val_score
 
 #Misc
@@ -60,10 +62,10 @@ from sklearn.preprocessing import scale, MinMaxScaler
 
 #자연어
 import collections
-from konlpy.tag import Okt
+# from konlpy.tag import Okt
 from collections import Counter
 from math import gamma
-import xgboost
+# import xgboost
 
 #UI파일 연결
 UI_Login = uic.loadUiType("Login.ui")[0]
@@ -110,6 +112,10 @@ class Thread1(QThread):
         df.columns = ['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL']
         df = df.drop([0], axis = 0)
         df = df.loc[df.순위 != '없음']
+
+        df = df.astype({'구매_3일':'str','구매':'str','리뷰':'str','찜':'str','문의':'str'})
+        df = df[~(df['구매_3일'].str.contains('수집실패',na=False,case=False)) & ~(df['구매'].str.contains('수집실패',na=False,case=False)) & ~(df['리뷰'].str.contains('수집실패',na=False,case=False)) & ~(df['찜'].str.contains('수집실패',na=False,case=False)) & ~(df['문의'].str.contains('수집실패',na=False,case=False))]
+
         df = df.astype({'No':'int'})
         df = df.astype({'순위':'int'})
         df.sort_values(by=["No","순위"], ascending=[True,True], inplace=True)
@@ -403,7 +409,8 @@ class Thread1(QThread):
                                     regDate = openDate
 
                                     detail_item = requests.get('https://smartstore.naver.com/i/v1/stores/'+chnlSeq+'/products/'+mallProductId, cookies=cookiess, headers=headerss).json()
-                                    
+                                    #수집 불가 에러 방지 목적의 타임슬립
+                                    # time.sleep(0.1)
                                     try:
                                         for t in detail_item['sellerTags']:
                                             sellerTag = t['text']
@@ -590,43 +597,37 @@ class Thread3(QThread):
 
                         #머신러닝
                         item_predict.loc[0, '등록일자'] = int(ac_df['등록일자'].max())
-                        item_predict.loc[0, '순위'] = int(ac_df['순위'].max())
+                        item_predict.loc[0, '순위'] = int(ac_df['순위'].max()/2)
 
                         x_train = ac_df.drop(['구매'], axis=1)
                         y_train = ac_df['구매']
                         x_test = item_predict.drop(['구매'], axis=1)
                         y_test = item_predict['구매']
 
-                        scaler = MinMaxScaler()
-                        scaler.fit(x_train)
-                        scaler.fit(x_test)
+                        # scaler = MinMaxScaler()
+                        # scaler.fit(x_train)
+                        # scaler.fit(x_test)
 
-                        x_train = scaler.transform(x_train)
-                        x_test = scaler.transform(x_test)
+                        # x_train = scaler.transform(x_train)
+                        # x_test = scaler.transform(x_test)
 
-                        kf = KFold(n_splits=10, random_state=1, shuffle=True)
+                        # kf = KFold(n_splits=10, random_state=1, shuffle=True)
 
-                        def rmsle(y_test, y_pred):
-                            return np.sqrt(mean_squared_error(y_test, y_pred))
-                        def cv_rmse(model, x_train=x_train):
-                            rmse = np.sqrt(-cross_val_score(model, x_train, y_train, scoings='meg_mean_squared_error', cv=kf))
+                        # def rmsle(y_test, y_pred):
+                        #     return np.sqrt(mean_squared_error(y_test, y_pred))
+                        # def cv_rmse(model, x_train=x_train):
+                        #     rmse = np.sqrt(-cross_val_score(model, x_train, y_train, scoings='meg_mean_squared_error', cv=kf))
 
-                        xgboost = XGBRegressor(learning_rate=0.3,
-                                                n_estimators=500,
-                                                max_depth=3,
-                                                min_child_weight=0,
-                                                gamma=0.6,
-                                                subsample=0.7,
-                                                colsample_bytree=0.7,
-                                                objective='reg:linear',
-                                                nthread=-1,
-                                                scale_pos_weight=1,
-                                                seed=27,
-                                                reg_alpha=0.00006,
-                                                random_state=42)
-                        xgb_model_full_data = xgboost.fit(x_train, y_train)
+                        rf = RandomForestRegressor(n_estimators=400,
+                                                    max_depth=12,
+                                                    min_samples_leaf=8,
+                                                    min_samples_split=8,
+                                                    random_state=0,
+                                                    n_jobs=1)
+
+                        random_forest = rf.fit(x_train, y_train)
                         # ac_result = xgb_model_full_data.predict(x_test)
-                        ac_result = '%0.4f' % float(xgb_model_full_data.predict(x_test))
+                        ac_result = '%0.4f' % float(random_forest.predict(x_test))
                         ac_sum = '%0.4f' % float(ac_pur/ac_app)
                     except:
                         ac_pur = '상품부족'
@@ -2469,6 +2470,11 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             worker_cnt_f = category_count
         else:
             worker_cnt_f = int(worker_cnt)
+
+        #max_worker 제한 하기(요청 제한 방지)
+        if worker_cnt_f > 8:
+            worker_cnt_f = 8
+
         estimated_time = int((category_count * (set_start['수집_max']-set_start['수집_min']+1) * 18 / worker_cnt_f) / 60)
         if estimated_time == 0:
             estimated_time = 1
