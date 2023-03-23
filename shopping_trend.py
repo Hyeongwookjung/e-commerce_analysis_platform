@@ -13,6 +13,7 @@ import pymysql
 import sqlite3
 from sklearn.ensemble import RandomForestRegressor
 from sqlalchemy import create_engine
+from bs4 import BeautifulSoup
 
 # from test import fetcher
 # pyrcc5 test.qrc -o ./test_rc.py
@@ -170,13 +171,13 @@ class Thread1(QThread):
             # df.to_excel(writer, index=False, sheet_name = '최종본') 
             # writer.save()
 
-            df.columns = ['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL']
+            df.columns = ['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_7일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL']
             df = df.drop([0], axis = 0)
             try:
                 df = df.loc[df.순위 != '없음']
                 print(1)
-                df = df.astype({'구매_3일':'str','구매':'str','리뷰':'str','찜':'str','문의':'str'})
-                df = df[~(df['구매_3일'].str.contains('수집실패',na=False,case=False)) & ~(df['구매'].str.contains('수집실패',na=False,case=False)) & ~(df['리뷰'].str.contains('수집실패',na=False,case=False)) & ~(df['찜'].str.contains('수집실패',na=False,case=False)) & ~(df['문의'].str.contains('수집실패',na=False,case=False))]
+                df = df.astype({'구매_7일':'str','구매':'str','리뷰':'str','찜':'str','문의':'str'})
+                df = df[~(df['구매_7일'].str.contains('수집실패',na=False,case=False)) & ~(df['구매'].str.contains('수집실패',na=False,case=False)) & ~(df['리뷰'].str.contains('수집실패',na=False,case=False)) & ~(df['찜'].str.contains('수집실패',na=False,case=False)) & ~(df['문의'].str.contains('수집실패',na=False,case=False))]
                 print(2)
                 df = df.astype({'No':'int'})
                 df = df.astype({'순위':'int'})
@@ -184,13 +185,13 @@ class Thread1(QThread):
                 df.reset_index(drop=True, inplace=True)
                 df.loc[df['찜'] == 'None', '찜'] = 0
                 df.loc[df['평점'] == 'None', '평점'] = 0
-                # df = df.astype({'구매_3일':'int','구매':'int','리뷰':'int','찜':'int','문의':'int'})
+                # df = df.astype({'구매_7일':'int','구매':'int','리뷰':'int','찜':'int','문의':'int'})
                 print(3)
                 df[['등록일자', '카테고리']].dropna()
                 df = df.astype({'판매유형':'str'})
                 df = df.astype({'상품가격':'int'})
                 df = df.astype({'등록일자':'int'})
-                df = df.astype({'구매_3일':'int'})
+                df = df.astype({'구매_7일':'int'})
                 df = df.astype({'구매':'int'})
                 df = df.astype({'리뷰':'int'})
                 df = df.astype({'찜':'int'})
@@ -279,12 +280,12 @@ class Thread1(QThread):
                     date_max = ''.join(date_max)
                     df = df.loc[df.등록일자 >= int(date_min)]
                     df = df.loc[df.등록일자 <= int(date_max)]
-                #구매3일
-                if set_start['구매3일'] == True:
-                    df = df.loc[df.구매_3일 != '']
+                #구매7일
+                if set_start['구매7일'] == True:
+                    df = df.loc[df.구매_7일 != '']
                 else:
-                    df = df.loc[df.구매_3일 >= int(set_start['구매3일_min'])]
-                    df = df.loc[df.구매_3일 <= int(set_start['구매3일_max'])]
+                    df = df.loc[df.구매_7일 >= int(set_start['구매7일_min'])]
+                    df = df.loc[df.구매_7일 <= int(set_start['구매7일_max'])]
                 #구매
                 if set_start['구매'] == True:
                     df = df.loc[df.구매 != '']
@@ -485,8 +486,9 @@ class Thread1(QThread):
                             category2Name = '없음'
                             category3Name = '없음'
                             category4Name = '없음'
-                            detail_purchase = "수집실패"
-                            cumulationSaleCount = "수집실패"
+                            detail_purchase = "0"
+                            # detail_purchase = "수집실패"
+                            # cumulationSaleCount = "수집실패"
                             commentCount = "수집실패"
                             viewAttributes = "수집실패"
                             sellerTags = ""
@@ -502,7 +504,7 @@ class Thread1(QThread):
                                     mallName = i['mallName']
                                     rank = i['rank']
                                     # rank_set = i['rank']
-                                    # purchaseCnt = i['purchaseCnt']
+                                    purchaseCnt = int(i['purchaseCnt'])
                                     reviewCount = i['reviewCount']
                                     openDate = int(i['openDate'])
                                     keepCnt = i['keepCnt']
@@ -537,14 +539,57 @@ class Thread1(QThread):
                                             manuTag = sellerTags[:-1]
                                     except:
                                         pass
+                                    
+                                    try:
+                                        #7일간 구매수 크롤링
+                                        headersss = {
+                                            'authority': 'm.smartstore.naver.com',
+                                            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                                            'accept-language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+                                            'cache-control': 'max-age=0',
+                                            # 'cookie': 'NA_CO=ct%3Dlfgv52w8%7Cci%3D8e43e521f69d2364cb1cc27b79fe5f498f51ced7%7Ctr%3Dslsl%7Chk%3D252d1ce025c4137da085e68ccd75914143842b49%7Ctrx%3Dundefined; wcs_bt=s_12579650cc372:1679319830; NNB=IUOPSJJ34MIWI; ASID=af75d55900000186e5eab73f0000005e; nx_ssl=2; nid_inf=1191992439; NID_AUT=qu70717cXCLPY2bPn22m1eOSccs53kQunE4BcQBY8mhIwxhVf6muDXbZJF2bgCiK; NID_JKL=3+NN6sYgR/6BwnSbzldz4Ot/2m738T871YQnD0Cc4Rs=; NID_SES=AAABzGj/5AU8YD4zrfRvaqsHwSizvGAIuZWdYTE/ZHO7wvRMmoEiLYtz1RWYQgRPTKVNugecUH+4ZyohKPwHI0e+nqciQFhtrToRckagcbMWi2Ap/sdtxllbqScksFeZ+I6jO1WhJiMEehZjVCJ8A7z7Kb2yb+691VGPlwWJnuXIcn9EQGSTqnpHjXlzAwo0tgWRkh/kyS0xtIMJ+fBY4k1nsWAhqCf0F35ByaJTUPrub34b2raiLI64lC21b6g63xPPKxa/6Bwz35ZgFsTA8HwBex1w3tSjXB+7z1HA3ikqMpFSCc1XtkNiGQO5HHx+E1ADQJrRKr5GewmzgDPlPceYLtJzDS7ncZJm9kbdDEO+kejQZvYgucJV/osDC6bYTqgb+WAh8KoniORC/J8FgbbnGW36eDnpEyKyxDXB8//sJJlZQDjM67YWgIT+ynRfR5qlmLCQWByVNrUOGp6r2VMcxvoCc0wAjjajsrn7CNHtvVCvk0uR2UbrsDQJqye8PQYZkYYIY8ek+Q2seqVhwa/dFiqdcq3UAMvKDUNZbWYnAM5j1ZCRQU3wMqnWy7uYcxompze0+fohz9yKwA8rCgoKe9/JEoZGCzuOoLdfRDswxt6a; page_uid=itmmJlp0J1ZssPA34H4ssssssP8-256121',
+                                            'sec-ch-ua': '"Google Chrome";v="111", "Not(A:Brand";v="8", "Chromium";v="111"',
+                                            'sec-ch-ua-mobile': '?1',
+                                            'sec-ch-ua-platform': '"Android"',
+                                            'sec-fetch-dest': 'document',
+                                            'sec-fetch-mode': 'navigate',
+                                            'sec-fetch-site': 'same-site',
+                                            'sec-fetch-user': '?1',
+                                            'upgrade-insecure-requests': '1',
+                                            'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36',
+                                        }
 
-                                    detail_purchase = detail_item['saleAmount']['recentSaleCount']
-                                    cumulationSaleCount = detail_item['saleAmount']['cumulationSaleCount']
+                                        seven_detail = requests.get(
+                                            'https://smartstore.naver.com/main/products/'+mallProductId,
+                                            # params=params,
+                                            # cookies=cookies,
+                                            headers=headersss,
+                                        )
+
+                                        soup = BeautifulSoup(seven_detail.text, 'html.parser') 
+                                        # print(soup)
+
+                                        a = soup.select('em._1vZLzdf7am strong')
+                                        # print(a)
+                                        numbers = re.findall(r'\d+', str(a))
+                                        numbers = list(map(int, numbers))
+                                        numbers = sum(numbers)
+
+                                        if purchaseCnt < numbers:
+                                            detail_purchase = 0
+                                        else:
+                                            detail_purchase = numbers
+
+                                    except:
+                                        detail_purchase = 0
+                                        pass
+
+                                    # detail_purchase = detail_item['saleAmount']['recentSaleCount']
                                     commentCount = detail_item['commentCount']
                                     viewAttributes = detail_item['viewAttributes']['원산지']
-                                    regDate = detail_item['regDate']
-                                    regDate = regDate[0:10]
-                                    regDate = re.sub('-','',regDate)
+                                    # regDate = detail_item['regDate']
+                                    # regDate = regDate[0:10]
+                                    # regDate = re.sub('-','',regDate)
 
                                     itemup = [
                                     str(category_num_f),
@@ -559,7 +604,7 @@ class Thread1(QThread):
                                     str(mobilePrice),
                                     str(regDate),
                                     str(detail_purchase),
-                                    str(cumulationSaleCount),
+                                    str(purchaseCnt),
                                     str(reviewCount),
                                     str(keepCnt),
                                     str(commentCount),
@@ -1031,7 +1076,7 @@ class Window_Login(QDialog, UI_Login):
             cur_user = con_user.cursor()
             #프로그램 버젼 확인
             sql = "SELECT * FROM version WHERE name=%s;"
-            cur_user.execute(sql, 'V4')
+            cur_user.execute(sql, 'V5')
             check_version = cur_user.fetchall()
             check_run = check_version[0][2]
             # print(check_run)
@@ -1587,7 +1632,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         self.checkBox_date_all.stateChanged.connect(self.date_all)
         self.dateEdit_min.dateChanged.connect(self.date_changed)
         self.dateEdit_max.dateChanged.connect(self.date_changed)
-        #구매3일 체크 상태 변동 시
+        #구매7일 체크 상태 변동 시
         self.checkBox_pur3_all.stateChanged.connect(self.pur3_all)
         self.spinBox_pur3_min.valueChanged.connect(self.pur3_changed)
         self.spinBox_pur3_max.valueChanged.connect(self.pur3_changed)
@@ -1654,7 +1699,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         self.dateEdit_max.setMaximumDate(QDate.currentDate())
         self.dateEdit_min.setEnabled(False)
         self.dateEdit_max.setEnabled(False)
-        #구매3일 전체
+        #구매7일 전체
         self.spinBox_pur3_min.setEnabled(False)
         self.spinBox_pur3_max.setEnabled(False)
         #구매 전체
@@ -1700,7 +1745,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             self.checkBox_date_all.toggle()
         self.dateEdit_min.setDate(QDate(2000,1,1))
         self.dateEdit_max.setDate(QDate.currentDate())
-        #구매3일
+        #구매7일
         if self.checkBox_pur3_all.isChecked() == True:
             pass
         else:
@@ -1774,9 +1819,9 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             '전체기간':self.checkBox_date_all.isChecked(),
             '시작일자':[self.dateEdit_min.date().year(),self.dateEdit_min.date().month(),self.dateEdit_min.date().day()],
             '종료일자':[self.dateEdit_max.date().year(),self.dateEdit_max.date().month(),self.dateEdit_max.date().day()],
-            '구매3일':self.checkBox_pur3_all.isChecked(),
-            '구매3일_min':self.spinBox_pur3_min.value(),
-            '구매3일_max':self.spinBox_pur3_max.value(),            
+            '구매7일':self.checkBox_pur3_all.isChecked(),
+            '구매7일_min':self.spinBox_pur3_min.value(),
+            '구매7일_max':self.spinBox_pur3_max.value(),            
             '구매':self.checkBox_pur_all.isChecked(),
             '구매_min':self.spinBox_pur_min.value(),
             '구매_max':self.spinBox_pur_max.value(),
@@ -1881,8 +1926,8 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         self.dateEdit_max.setDate(QDate.currentDate())
         self.dateEdit_min.setDate(QDate(set['시작일자'][0],set['시작일자'][1],set['시작일자'][2]))
         self.dateEdit_max.setDate(QDate(set['종료일자'][0],set['종료일자'][1],set['종료일자'][2]))
-        #구매3일 세팅
-        if set['구매3일'] == True:
+        #구매7일 세팅
+        if set['구매7일'] == True:
             if self.checkBox_pur3_all.isChecked() == True:
                 pass
             else:
@@ -1892,8 +1937,8 @@ class Window_Analysis(QMainWindow, UI_Analysis):
                 self.checkBox_pur3_all.toggle()  
         self.spinBox_pur3_min.setValue(0)
         self.spinBox_pur3_max.setValue(99999)
-        self.spinBox_pur3_min.setValue(set['구매3일_min'])
-        self.spinBox_pur3_max.setValue(set['구매3일_max'])        
+        self.spinBox_pur3_min.setValue(set['구매7일_min'])
+        self.spinBox_pur3_max.setValue(set['구매7일_max'])        
         #구매 세팅
         if set['구매'] == True:
             if self.checkBox_pur_all.isChecked() == True:
@@ -1989,7 +2034,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
     def price_changed(self):
         self.spinBox_price_min.setMaximum(self.spinBox_price_max.value())
         self.spinBox_price_max.setMinimum(self.spinBox_price_min.value())
-    #구매3일 변경
+    #구매7일 변경
     def pur3_changed(self):
         self.spinBox_pur3_min.setMaximum(self.spinBox_pur3_max.value())
         self.spinBox_pur3_max.setMinimum(self.spinBox_pur3_min.value())
@@ -2059,7 +2104,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             self.spinBox_pur_min.setEnabled(False)
             self.spinBox_pur_max.setEnabled(False)
 
-    #구매3일 체크 로직 구현
+    #구매7일 체크 로직 구현
     def pur3_all(self, state):
         if state == 0:
             self.spinBox_pur3_min.setEnabled(True)
@@ -2259,7 +2304,7 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             cur_user = con_user.cursor()
             #프로그램 버젼 확인
             sql = "SELECT * FROM version WHERE name=%s;"
-            cur_user.execute(sql, 'V4')
+            cur_user.execute(sql, 'V5')
             check_version = cur_user.fetchall()
             check_review = check_version[0][4]
         except:
@@ -2448,9 +2493,9 @@ class Window_Analysis(QMainWindow, UI_Analysis):
             '전체기간':self.checkBox_date_all.isChecked(),
             '시작일자':[self.dateEdit_min.date().year(),self.dateEdit_min.date().month(),self.dateEdit_min.date().day()],
             '종료일자':[self.dateEdit_max.date().year(),self.dateEdit_max.date().month(),self.dateEdit_max.date().day()],
-            '구매3일':self.checkBox_pur3_all.isChecked(),
-            '구매3일_min':self.spinBox_pur3_min.value(),
-            '구매3일_max':self.spinBox_pur3_max.value(),            
+            '구매7일':self.checkBox_pur3_all.isChecked(),
+            '구매7일_min':self.spinBox_pur3_min.value(),
+            '구매7일_max':self.spinBox_pur3_max.value(),            
             '구매':self.checkBox_pur_all.isChecked(),
             '구매_min':self.spinBox_pur_min.value(),
             '구매_max':self.spinBox_pur_max.value(),
@@ -2849,11 +2894,11 @@ class Window_Analysis(QMainWindow, UI_Analysis):
         check_product = False
             
         #데이터프레임 형성
-        item_list = [['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL']]
+        item_list = [['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_7일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL']]
 
         #테이블 리셋    
         self.tableWidget.clear()
-        self.tableWidget.setHorizontalHeaderLabels(['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_3일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL'])
+        self.tableWidget.setHorizontalHeaderLabels(['No','대분류','중분류','소분류','세분류','카테고리','순위','판매유형','제조국가','상품가격','등록일자','구매_7일','구매','리뷰','찜','문의','평점','스토어명','등급','상품명','상품명_L','옵션','옵션_L','태그','태그_L','URL'])
         category_num = 0
         page_num = 0
 

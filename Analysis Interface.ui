@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1327</width>
+    <width>1336</width>
     <height>1006</height>
    </rect>
   </property>
@@ -645,7 +645,7 @@ Max = 99,999건</string>
 Max = 99,999건</string>
                 </property>
                 <property name="text">
-                 <string>구매(3일)</string>
+                 <string>구매(7일)</string>
                 </property>
                </widget>
               </item>
@@ -2249,7 +2249,7 @@ Max = 999,999,999원</string>
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1327</width>
+     <width>1336</width>
      <height>26</height>
     </rect>
    </property>
